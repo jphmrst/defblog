@@ -168,19 +168,19 @@ should be no CSS style sheet."
 	 )
        
        ;; Register this blog with org-project.
-       (let ((cleaned-alist (assq-delete-all
+       (let ((cleaned-alist (alist-remove-string-key
 			     ,(concatenate 'string name "-top-page")
-			     (assq-delete-all
+			     (alist-remove-string-key
 			      ,(concatenate 'string name "-pages")
-			      (assq-delete-all
+			      (alist-remove-string-key
 			       ,(concatenate 'string name "-cat-indices")
-			       (assq-delete-all
+			       (alist-remove-string-key
 				,(concatenate 'string name "-derived-xml")
-				(assq-delete-all
+				(alist-remove-string-key
 				 ,(concatenate 'string name "-statics")
-				 (assq-delete-all
+				 (alist-remove-string-key
 				  ,(concatenate 'string name "-posts")
-				  (assq-delete-all
+				  (alist-remove-string-key
 				   ,(concatenate 'string name)
 				   org-publish-project-alist))))))))
 	     
@@ -622,6 +622,18 @@ file."
 (defun def-blog/kwdpair (kwd)
   (let ((data (cadr kwd)))
     (list (plist-get data :key) (plist-get data :value))))
+
+(defun alist-remove-string-key (key alist)
+  "Remove all pairs matching KEY from ALIST, where KEY is a string."
+  (cond
+    ((null alist) nil)
+    (t (let* ((head-pair (car alist))
+	      (head-key (car head-pair))
+	      (recur-cdr (alist-remove-string-key key (cdr alist))))
+	 (cond
+	   ((string= key head-key) recur-cdr)
+	   (t (cons head-pair recur-cdr)))))))
+	   
 
 (provide 'def-blog)
 ;;; def-blog ends here
