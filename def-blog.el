@@ -5,15 +5,9 @@
 
 ;;; Code:
 
-(defvar def-blog/all-org-defaults-plist
-    '(:publishing-function org-html-publish-to-html
-      :section-numbers nil
-      :table-of-contents nil
-      :with-toc nil))
-
-(cl-defmacro def-blog (&key name base-directory
-			    (src-subdir "src") (pub-subdir "pub")
-			    (gen-subdir "gen")
+(cl-defmacro def-blog (name base-directory &key
+			    (src-subdir "src/") (pub-subdir "pub/")
+			    (gen-subdir "gen/")
 			    css-style-subpath
 			    (frontpage-css-style-subpath css-style-subpath)
 			    (page-css-style-subpath css-style-subpath)
@@ -45,42 +39,60 @@ should be no CSS style sheet."
   (unless (string-match "/$" base-directory)
     (setf base-directory (concatenate 'string base-directory "/")))
   
-  (let ((file-plists-hash (intern (concatenate 'string
+  (let (;; The stateful structures associated with this blog, to be
+	;; updated before each time the blog HTML is built.  Each of
+	;; these names is associated with a DEFVAR in the macro
+	;; expansion.
+	(file-plists-hash (intern (concatenate 'string
 				    "+def-blog/" name "/file-plists-hash+")))
 	(category-tags (intern (concatenate 'string
 				 "*def-blog/" name "/category-tags*")))
 	(category-plists-hash (intern (concatenate 'string
 					"+def-blog/" name
 					"/category-plists-hash+")))
+
+	;; Names of global constants associated with this blog.  Each
+	;; of these names is also associated with a DEFVAR in the
+	;; macro expansion.
 	(basedir (intern (concatenate 'string
 			   "+def-blog/" name "/basedir+")))
 	(src-basedir (intern (concatenate 'string
-			       "+def-blog/" name "/suc-basedir+")))
+			       "+def-blog/" name "/src-basedir+")))
 	(pub-basedir (intern (concatenate 'string
 			       "+def-blog/" name "/pub-basedir+")))
 	(tmp-basedir (intern (concatenate 'string
 			       "+def-blog/" name "/tmp-basedir+")))
-	(pages-basedir (intern (concatenate 'string
-				 "+def-blog/" name "/pages-basedir+")))
 	(posts-basedir (intern (concatenate 'string
 				 "+def-blog/" name "/posts-basedir+")))
+	(cat-indices-basedir (intern (concatenate 'string
+				       "+def-blog/" name "/cat-indices+")))
+	(derived-xml-basedir (intern (concatenate 'string
+				       "+def-blog/" name "/derived-xml+")))
 	(lv1-preamble-plist (intern (concatenate 'string
 				      "+def-blog/" name
 				      "/lv1-preamble-plist+")))
 	(lv2-preamble-plist (intern (concatenate 'string
 				      "+def-blog/" name
 				      "/lv2-preamble-plist+")))
-	(page-defaults-plist (intern (concatenate 'string
-				       "+def-blog/" name
-				       "/page-defaults-plist+")))
 
+	;; Names of functions associated with this blog.  Each of
+	;; these names is associated with a DEFUN in the macro
+	;; expansion.
 	(pages-prep-fn (intern (concatenate 'string
 			       "def-blog/" name "/pages-prep")))
 	(reset-hash-fn (intern (concatenate 'string
-				 "def-blog/" name "/reset-hash"))))
+				 "def-blog/" name "/reset-hash")))
+	(cat-indices-prep-fn (intern (concatenate 'string
+				       "def-blog/" name "/cat-indices-prep")))
+	(derived-xml-prep-fn (intern (concatenate 'string
+				       "def-blog/" name "/derived-xml-prep")))
+	(posts-prep-fn (intern (concatenate 'string
+				 "def-blog/" name "/posts-prep"))))
     
     `(progn
 
+       ;; DEFVARs corresponding to the stateful components of this
+       ;; blog.
        (defvar ,file-plists-hash (make-hash-table :test 'eq)
 	 ,(concatenate 'string
 	    "Hashtable for holding properties of the posts and pages of the "
@@ -95,19 +107,32 @@ should be no CSS style sheet."
 	    "Hashtable for holding properties of the categories of the "
 	    name " blog."))
 
+       ;; DEFVARs corresponding to the constants defined for this
+       ;; blog.
        (defvar ,basedir ,base-directory
 	 ,(concatenate 'string "Base work directory for the " name " blog."))
        (defvar ,src-basedir ,(concatenate 'string base-directory src-subdir)
 	 ,(concatenate 'string
-	    "Hashtable for holding properties of the categories of the "
-	    name " blog."))
+	    "Directory with the source ORG files of the " name " blog."))
        (defvar ,pub-basedir ,(concatenate 'string base-directory pub-subdir)
 	 ,(concatenate 'string
-	    "Hashtable for holding properties of the categories of the "
-	    name " blog."))
+	    "Target directory for publishable files of the " name " blog."))
        (defvar ,tmp-basedir ,(concatenate 'string base-directory gen-subdir)
 	 ,(concatenate 'string
-	    "Hashtable for holding properties of the categories of the "
+	    "Scratch space directory for the " name " blog."))
+       (defvar ,posts-basedir
+	   ,(concatenate 'string base-directory gen-subdir "posts/")
+	 ,(concatenate 'string
+	    "Scratch space directory for copying over posts for the " name " blog."))
+       (defvar ,cat-indices-basedir 
+	   ,(concatenate 'string base-directory gen-subdir "cat-indices/")
+	 ,(concatenate 'string
+	    "Scratch space area for generating category index files for the "
+	    name " blog."))
+       (defvar ,derived-xml-basedir 
+	   ,(concatenate 'string base-directory gen-subdir "derived-xml/")
+	 ,(concatenate 'string
+	    "Scratch space area for generating XML files for the "
 	    name " blog."))
 
        (defvar ,lv1-preamble-plist
@@ -118,121 +143,179 @@ should be no CSS style sheet."
 	   '(:html-preamble
 	     "<link rel=stylesheet type=\"text/css\" href=\"../style.css\"/>"))
 
-       (defvar ,page-defaults-plist
-	   `(:base-directory ,+def-blog/pages-basedir+
-			     :publishing-directory ,+def-blog/publish-dir+
-			     ,@def-blog/all-org-defaults-plist))
-
+       ;; DEFUNs used in the ORG-PUBLISH-PROJECT-ALIST clauses for
+       ;; this blog.  Each of these will add additional blog-specific
+       ;; parameters to a call to a related function defined after
+       ;; this macro expansion.
+       
        (defun ,pages-prep-fn (properties)
-	 (def-blog/pages-prep properties ,tmp-basedir ,category-tags))
+	 (def-blog/pages-prep properties ,tmp-basedir ,category-tags
+			      ,file-plists-hash))
+       
        (defun ,reset-hash-fn (properties)
 	 (def-blog/reset-hash ,tmp-basedir))
        
+       (defun ,cat-indices-prep-fn (properties)
+	 ;; TODO
+	 )
+       
+       (defun ,derived-xml-prep-fn (properties)
+	 ;; TODO
+	 )
+       
+       (defun ,posts-prep-fn (properties)
+	 ;; TODO
+	 )
+       
        ;; Register this blog with org-project.
-       (setf org-publish-project-alist
-	     `(;; Convert the top-level front page from the source
-	       ;; directory to the pub directory --- this file only,
-	       ;; no need to copy it anywhere.
-	       (,,(concatenate 'string name "-top-page")
-		  :exclude ".*" :include ("index.org")
-		  :html-postamble nil
-		  :recursive nil
-		  :preparation-function ,reset-hash-fn
-		  ,@,page-defaults-plist
-		  ,@,lv1-preamble-plist)
-	
-	       ;; Other (top-level) non-index pages: copy them from
-	       ;; the source area to a tmp/pages area, then convert
-	       ;; into the pub area.
-	       (,,(concatenate 'string name "-pages")
-		  :exclude "index.org"
-		  ;; TODO This preparation-function needs reworking.
-		  ;; It must only copy the pages into the tmp/pages
-		  ;; space. Or maybe, no preparation here (mostly this
-		  ;; needs to move to the indices and copy-verbatim
-		  ;; tasks), and use non-recursive exploration of just
-		  ;; the top-level org files?
-		  :preparation-function ,pages-prep-fn
-		  :html-postamble "<a href=\"./\">Back to the top</a>."
-		  :recursive t
-		  ,@,page-defaults-plist
-		  ,@,lv1-preamble-plist)
+       (let ((cleaned-alist (assq-delete-all
+			     ,(concatenate 'string name "-top-page")
+			     (assq-delete-all
+			      ,(concatenate 'string name "-pages")
+			      (assq-delete-all
+			       ,(concatenate 'string name "-cat-indices")
+			       (assq-delete-all
+				,(concatenate 'string name "-derived-xml")
+				(assq-delete-all
+				 ,(concatenate 'string name "-statics")
+				 (assq-delete-all
+				  ,(concatenate 'string name "-posts")
+				  (assq-delete-all
+				   ,(concatenate 'string name)
+				   org-publish-project-alist))))))))
+	     
+	     (top-page-entry
+	      (list* :preparation-function ',reset-hash-fn
+		     :base-directory ,src-basedir
+		     :publishing-directory ,pub-basedir
+		     :publishing-function 'org-html-publish-to-html
+		     :section-numbers nil
+		     :table-of-contents nil
+		     :with-toc nil
+		     :exclude ".*" :include '("index.org")
+		     :recursive nil
+		     :html-postamble nil
+		     
+		     ,lv1-preamble-plist))
 
-	       ;; Category indices generated into the pages subdir. ;;
-	       ;; TODO Generate these into a new tmp/category-indices
-	       ;; area, and convert from there.
-	       (,,(concatenate 'string name "-cat-indices")
-		  :exclude "\\.*"
-		  :include ("compute/index.org"
-			    "cook/index.org"
-			    "cool/index.org"
-			    "meta/index.org"
-			    "politic/index.org")
-		  :html-postamble
-		  "<a href=\"../\">Back to the top</a>."
-		  :recursive t
-		  ,@,page-defaults-plist
-		  ,@,lv2-preamble-plist)
-	
-	       ;; Static files in the pages directory without translation.
-	       ;; TODO Should be the source directory
-	       (,,(concatenate 'string name "-statics")
-		  :base-directory ,+def-blog/pages-basedir+ ;; Nope,
-							    ;; the
-							    ;; whole
-							    ;; SRC
-							    ;; dir..
-		  :base-extension "html\\|css\\|jpg\\|gif\\|png\\|xml"
-		  :publishing-directory ,,pub-basedir
-		  :section-numbers nil
-		  :table-of-contents nil
-		  :with-toc nil
-		  :publishing-function org-publish-attachment
-		  :recursive t)
+	     (pages-entry
+	      (list* :base-directory ,src-basedir
+		     :publishing-directory ,pub-basedir
+		     :exclude "index.org"
+		     :html-postamble
+		     "<a href=\"./\">Back to the top</a>."
+		     :recursive nil
+		     ;; :preparation-function ',pages-prep-fn
+			     
+		     ;; TODO No preparation here right now --- just
+		     ;; copying non-index pages over.  But maybe these
+		     ;; should really be copied with header/footer
+		     ;; org-text into scratch area?
+		     
+		     ,lv1-preamble-plist))
 
-	       ;; TODO There will also be generated static files.  We
-	       ;; need to generate them from the preparation-functiom,
-	       ;; and then convert them over.
-	       
-	       ;; TODO Individual posts should be copied into
-	       ;; tmp/posts (its subdirectories created as well), and
-	       ;; converted from there.
-	       (,,(concatenate 'string name "-posts")
-		  :base-directory ,+def-blog/posts-basedir+
-		  :publishing-directory ,pub-basedir
-		  :html-preamble "<style type=\"text/css\"> .title { text-align: left; } </style> <link rel=stylesheet type=\"text/css\" href=\"../style.css\"/>"
-		  :html-postamble "<a href=\"../\">Back to the top</a>, or <a href=\"./\">more like this</a>."
-		  :recursive t
-		  ,@def-blog/all-org-defaults-plist)
-	       
-	       ;; Everything for the overall blog target
-	       (,,name
-		:components (;; Do *-top-page first; it has the side
+	     (cat-indices-entry
+	      (list* :preparation-function ',cat-indices-prep-fn
+		     :base-directory ,cat-indices-basedir
+		     :publishing-directory ,pub-basedir
+		     :html-postamble
+		     "<a href=\"../\">Back to the top</a>."
+		     :recursive t
+		     
+		     ,lv2-preamble-plist))
+
+	     (derived-xml-entry
+	      (list :preparation-function ',derived-xml-prep-fn
+		    :base-directory ,derived-xml-basedir
+		    :base-extension "xml"
+		    :publishing-directory ,pub-basedir
+		    :recursive t))
+
+	     (statics-entry
+	      (list :base-directory ,src-basedir
+		    :base-extension "html\\|css\\|jpg\\|gif\\|png\\|xml"
+		    :publishing-directory ,pub-basedir
+		    :section-numbers nil
+		    :table-of-contents nil
+		    :with-toc nil
+		    :publishing-function 'org-publish-attachment
+		    :recursive t))
+
+	     (posts-entry
+	      (list* :preparation-function ',posts-prep-fn
+		     :base-directory ,posts-basedir
+		     :publishing-directory ,pub-basedir
+		     :html-preamble "<style type=\"text/css\"> .title { text-align: left; } </style> <link rel=stylesheet type=\"text/css\" href=\"../style.css\"/>"
+		     :html-postamble "<a href=\"../\">Back to the top</a>, or <a href=\"./\">more like this</a>."
+		     :recursive t
+		     :publishing-function 'org-html-publish-to-html
+		     :section-numbers nil
+		     :table-of-contents nil
+		     :with-toc nil
+		     
+		    ,lv2-preamble-plist))
+
+	     (overall-target
+	      '(:components (;; Do *-top-page first; it has the side
 			     ;; effect of updating the properties
 			     ;; hashtable.
-			     ,,(concatenate 'string name "-top-page")
-			       ,,(concatenate 'string name "-pages")
-			       ,,(concatenate 'string name "-posts")
-			       ,,(concatenate 'string name "-cat-indices")
-			       ,,(concatenate 'string name "-statics")))
+			     ,(concatenate 'string name "-top-page")
+			     ,(concatenate 'string name "-pages")
+			     ,(concatenate 'string name "-posts")
+			     ,(concatenate 'string name "-cat-indices")
+			     ,(concatenate 'string name "-statics")))))
+	 
+	 (setf org-publish-project-alist
+
+	       ;; Convert the top-level front page from the source
+	       ;; directory to the pub directory --- this file only,
+	       ;; no need to copy it anywhere.
+	       (acons ,(concatenate 'string name "-top-page")
+		      top-page-entry
+	
+		      ;; Other (top-level) non-index pages: copy them
+		      ;; from the source area to a tmp/pages area,
+		      ;; then convert into the pub area.
+		      (acons ,(concatenate 'string name "-pages")
+			     pages-entry
+
+			     ;; Category indices generated into the
+			     ;; pages subdir.
+			     (acons ,(concatenate 'string name "-cat-indices")
+				    cat-indices-entry
+	
+				    ;; Static files in the pages
+				    ;; directory without translation.
+				    (acons ,(concatenate 'string name "-statics")
+					   statics-entry
+
+					   ;; TODO There will also be
+					   ;; generated static files.
+					   ;; We need to generate them
+					   ;; from the
+					   ;; preparation-functiom,
+					   ;; and then convert them
+					   ;; over.
 	       
-	       ;; Everything else in org-publish-project-alist
-	       ,,@(assq-delete-all
-		   (concatenate 'string name "-top-page")
-		   (assq-delete-all
-		    (concatenate 'string name "-pages")
-		    (assq-delete-all
-		     (concatenate 'string name "-cat-indices")
-		     (assq-delete-all
-		      (concatenate 'string name "-statics")
-		      (assq-delete-all
-		       (concatenate 'string name "-posts")
-		       (assq-delete-all
-			(concatenate 'string name)
-			org-publish-project-alist)))))))))))
+					   ;; TODO Individual posts
+					   ;; should be copied into
+					   ;; tmp/posts (its
+					   ;; subdirectories created
+					   ;; as well), and converted
+					   ;; from there.
+					   (acons ,(concatenate 'string name "-posts")
+						  posts-entry
+	       
+	       ;; Everything for the overall blog target
+						  (acons ,name overall-target
+	       
+							 ;; Everything else in org-publish-project-alist
+							 cleaned-alist)))))))
+	 (message "Defined blog %s; use org-publish to generate" ',name)))))
 
 
-(defun def-blog/pages-prep (properties tmp-basedir category-tags)
+(defun def-blog/pages-prep (properties tmp-basedir
+			    category-tags file-plist-hash)
   "Writes the automatically-generated files in the pages directory.
 - PROPERTIES is as specified in org-publish.
 - TMP-BASEDIR is the pathname we can use to locate the temporary space.
@@ -243,15 +326,16 @@ we use as tags of the categories."
   ;; Since this function is called here, make sure that this function
   ;; DEF-BLOG/PAGES-PREP is called from the first component in the
   ;; ORG-PUBLISH config.
-  (def-blog/write-post-indices properties tmp-basedir)
-  (def-blog/write-rss properties tmp-basedir category-tags)
+  (def-blog/write-post-indices properties tmp-basedir file-plist-hash)
+  (def-blog/write-rss properties tmp-basedir category-tags file-plist-hash)
   ;; (message "\nEnd def-blog/pages-prep")
   )
 
 ;;; =================================================================
 ;;; Writing RSS feeds
 
-(defun def-blog/write-rss (properties tmp-basedir category-tags)
+(defun def-blog/write-rss (properties tmp-basedir
+			   category-tags file-plist-hash)
   "Write RSS files for the overall site and for each post category.  PROPERTIES are from org-publish."
   (let* ((pages-basedir (concatenate 'string tmp-basedir "/pages"))
 	 (all-buf (find-file-noselect (concatenate 'string
@@ -270,7 +354,9 @@ we use as tags of the categories."
       (let* ((posts-subdir (concatenate 'string posts-basedir category-tag))
 	     (post-fullpaths (file-expand-wildcards (concatenate 'string
 						      posts-subdir "/*.org")))
-	     (plists (mapcar #'def-blog/fetch-file-plist post-fullpaths))
+	     (plists (mapcar #'(lambda (p)
+				 (def-blog/fetch-file-plist p file-plist-hash))
+			     post-fullpaths))
 	     (rss-buf (find-file-noselect (concatenate 'string
 					    pages-basedir category-tag
 					    "/rss.xml")))
@@ -362,7 +448,7 @@ we use as tags of the categories."
 ;;; =================================================================
 ;;; Writing index pages
 
-(defun def-blog/write-post-indices (properties tmp-basedir)
+(defun def-blog/write-post-indices (properties tmp-basedir file-plist-hash)
   "For DEF-BLOG/PAGES-PREP, writes the automatically-generated files in the pages directory.  PROPERTIES is as specified in org-publish."
   ;; (message "Start def-blog/write-post-indices")
   (let* ((pages-basedir (concatenate 'string tmp-basedir "/pages"))
@@ -394,7 +480,8 @@ we use as tags of the categories."
 		  (mapcar #'(lambda (x)
 			      (let ((full (concatenate 'string
 					    dir "/" x)))
-				(def-blog/fetch-file-plist full)))
+				(def-blog/fetch-file-plist full
+				    file-plist-hash)))
 			  org-files)))
 	    ;; (message "- prop-lists: %s" prop-lists)
 	    (make-directory out-dir t)
@@ -452,42 +539,29 @@ we use as tags of the categories."
     ((funcall f (car xs)) (cons (car xs) (filter f (cdr xs))))
     (t (filter f (cdr xs)))))
 
-;;; =================================================================
-;;; Cached properties.
-
-;; TODO These three all need to be defined per-blog inside the macro.
-
-;;; (defun def-blog/cache-file-properties (tmp-basedir)
-;;;   "Set up the various cached hashtables."
-;;;   (def-blog/reset-hash tmp-basedir))
-;;; 
-;;; (defvar +def-blog/file-properties+
-;;;     (make-hash-table :test 'eq)
-;;;   "Hashtable for holding properties of the posts and pages of the maraist.org files.")
-;;; 
-;;; (defun def-blog/fetch-file-plist (path)
-;;;   (let ((result (gethash (intern path) +def-blog/file-properties+)))
-;;;     ;; (message "Cached %s --> %s" path result)
-;;;     result))
+(defun def-blog/fetch-file-plist (path file-plist-hash)
+  (let ((result (gethash (intern path) file-plist-hash)))
+    ;; (message "Cached %s --> %s" path result)
+    result))
 
 ;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-(defun def-blog/reset-hash (tmp-basedir file-properties)
+(defun def-blog/reset-hash (tmp-basedir file-plist-hash)
   "Set up the properties hash"
   (let* ((pages-basedir (concatenate 'string tmp-basedir "/pages"))
 	 (posts-basedir (concatenate 'string tmp-basedir "/posts")))
-    (clrhash file-properties)
+    (clrhash file-plist-hash)
     (dolist (base-dir (list posts-basedir pages-basedir))
       (let ((base-dir-contents (directory-files base-dir)))
 	(dolist (base-dir-item base-dir-contents)
 	  (let ((base-dir-item-fullpath (concatenate 'string
 					  base-dir base-dir-item)))
 	    (def-blog/process-file-for-hash base-dir-item
-		base-dir-item-fullpath)))))
+		base-dir-item-fullpath file-plist-hash)))))
     ;; (message "Finished property hash reset")
     ))
 
-(defun def-blog/process-file-for-hash (bare-name full-path)
+(defun def-blog/process-file-for-hash (bare-name full-path file-plist-hash)
   "Recursive function for populating the org properties hash from a given 
 file."
   ;; (message "Processing %s" full-path)
@@ -501,13 +575,13 @@ file."
 	 (let ((dir-item-fullpath (concatenate 'string
 				    full-path "/" dir-item)))
 	   (def-blog/process-file-for-hash dir-item
-					 dir-item-fullpath)))))
+	       dir-item-fullpath file-plist-hash)))))
 
     ;; If it's an ORGMODE file, pull and cache its properties.
     ((string-match "\\.org$" bare-name)
      (let ((plist (def-blog/build-file-plist bare-name full-path)))
        ;; (message "- Caching %s --> %s" full-path plist)
-       (puthash (intern full-path) plist +def-blog/file-properties+)))
+       (puthash (intern full-path) plist file-plist-hash)))
 
     ;; When debugging we may want to know about this fall-through.
     ;; (t (message "- No action for %s" full-path))
