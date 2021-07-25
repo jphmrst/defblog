@@ -78,6 +78,8 @@ should be no CSS style sheet."
 	;; Names of functions associated with this blog.  Each of
 	;; these names is associated with a DEFUN in the macro
 	;; expansion.
+
+	;; TODO Does not seem to be used anywhere
 	(pages-prep-fn (intern (concatenate 'string
 			       "def-blog/" name "/pages-prep")))
 	(reset-hash-fn (intern (concatenate 'string
@@ -147,7 +149,8 @@ should be no CSS style sheet."
        ;; this blog.  Each of these will add additional blog-specific
        ;; parameters to a call to a related function defined after
        ;; this macro expansion.
-       
+
+       ;; TODO Does not seem to be called from anywhere
        (defun ,pages-prep-fn (properties)
 	 (def-blog/pages-prep properties ,tmp-basedir ,category-tags
 			      ,file-plists-hash))
@@ -156,16 +159,13 @@ should be no CSS style sheet."
 	 (def-blog/reset-hash ,tmp-basedir))
        
        (defun ,cat-indices-prep-fn (properties)
-	 ;; TODO
-	 )
+	 (def-blog/cat-indices-prep properties))
        
        (defun ,derived-xml-prep-fn (properties)
-	 ;; TODO
-	 )
+	 (def-blog/derived-xml-prep properties))
        
        (defun ,posts-prep-fn (properties)
-	 ;; TODO
-	 )
+	 (def-blog/posts-prep-fn properties))
        
        ;; Register this blog with org-project.
        (let ((cleaned-alist (alist-remove-string-key
@@ -184,6 +184,9 @@ should be no CSS style sheet."
 				   ,(concatenate 'string name)
 				   org-publish-project-alist))))))))
 	     
+	     ;; Convert the top-level front page from the source
+	     ;; directory to the pub directory --- this file only, no
+	     ;; need to copy it anywhere.
 	     (top-page-entry
 	      (list* :preparation-function ',reset-hash-fn
 		     :base-directory ,src-basedir
@@ -198,6 +201,11 @@ should be no CSS style sheet."
 		     
 		     ,lv1-preamble-plist))
 
+	     ;; Other (top-level) non-index pages: right now, convert
+	     ;; straight from the source directory to the pub area.
+	     ;;
+	     ;; But maybe these should really be copied with
+	     ;; header/footer org-text into scratch area?
 	     (pages-entry
 	      (list* :base-directory ,src-basedir
 		     :publishing-directory ,pub-basedir
@@ -205,15 +213,11 @@ should be no CSS style sheet."
 		     :html-postamble
 		     "<a href=\"./\">Back to the top</a>."
 		     :recursive nil
-		     ;; :preparation-function ',pages-prep-fn
 			     
-		     ;; TODO No preparation here right now --- just
-		     ;; copying non-index pages over.  But maybe these
-		     ;; should really be copied with header/footer
-		     ;; org-text into scratch area?
-		     
 		     ,lv1-preamble-plist))
 
+	     ;; Category indices: generate ORG files into tmp space,
+	     ;; and then convert.
 	     (cat-indices-entry
 	      (list* :preparation-function ',cat-indices-prep-fn
 		     :base-directory ,cat-indices-basedir
@@ -224,6 +228,8 @@ should be no CSS style sheet."
 		     
 		     ,lv2-preamble-plist))
 
+	     ;; XML files: generate XML files into tmp space, and then
+	     ;; publishing copies over to pub space.
 	     (derived-xml-entry
 	      (list :preparation-function ',derived-xml-prep-fn
 		    :base-directory ,derived-xml-basedir
@@ -231,6 +237,8 @@ should be no CSS style sheet."
 		    :publishing-directory ,pub-basedir
 		    :recursive t))
 
+	     ;; Static files in the source directory that can be
+	     ;; copied over to pub space without translation.
 	     (statics-entry
 	      (list :base-directory ,src-basedir
 		    :base-extension "html\\|css\\|jpg\\|gif\\|png\\|xml"
@@ -241,6 +249,9 @@ should be no CSS style sheet."
 		    :publishing-function 'org-publish-attachment
 		    :recursive t))
 
+	     ;; Individual posts are copied into tmp/posts (its
+	     ;; subdirectories created as well), and converted from
+	     ;; there.
 	     (posts-entry
 	      (list* :preparation-function ',posts-prep-fn
 		     :base-directory ,posts-basedir
@@ -266,54 +277,23 @@ should be no CSS style sheet."
 			     ,(concatenate 'string name "-statics")))))
 	 
 	 (setf org-publish-project-alist
-
-	       ;; Convert the top-level front page from the source
-	       ;; directory to the pub directory --- this file only,
-	       ;; no need to copy it anywhere.
 	       (acons ,(concatenate 'string name "-top-page")
 		      top-page-entry
-	
-		      ;; Other (top-level) non-index pages: copy them
-		      ;; from the source area to a tmp/pages area,
-		      ;; then convert into the pub area.
 		      (acons ,(concatenate 'string name "-pages")
 			     pages-entry
-
-			     ;; Category indices generated into the
-			     ;; pages subdir.
 			     (acons ,(concatenate 'string name "-cat-indices")
 				    cat-indices-entry
-	
-				    ;; Static files in the pages
-				    ;; directory without translation.
-				    (acons ,(concatenate 'string name "-statics")
-					   statics-entry
+				    (acons ,(concatenate 'string name "-derived-xml")
+					   derived-xml-entry
+					   (acons ,(concatenate 'string name "-statics")
+						  statics-entry
+						  (acons ,(concatenate 'string name "-posts")
+							 posts-entry
+							 (acons ,name overall-target
+	       							cleaned-alist)))))))))
+       (message "Defined blog %s; use org-publish to generate" ',name))))
 
-					   ;; TODO There will also be
-					   ;; generated static files.
-					   ;; We need to generate them
-					   ;; from the
-					   ;; preparation-functiom,
-					   ;; and then convert them
-					   ;; over.
-	       
-					   ;; TODO Individual posts
-					   ;; should be copied into
-					   ;; tmp/posts (its
-					   ;; subdirectories created
-					   ;; as well), and converted
-					   ;; from there.
-					   (acons ,(concatenate 'string name "-posts")
-						  posts-entry
-	       
-	       ;; Everything for the overall blog target
-						  (acons ,name overall-target
-	       
-							 ;; Everything else in org-publish-project-alist
-							 cleaned-alist)))))))
-	 (message "Defined blog %s; use org-publish to generate" ',name)))))
-
-
+;; TODO --- is this used anymore?  But calls in body might be useful.
 (defun def-blog/pages-prep (properties tmp-basedir
 			    category-tags file-plist-hash)
   "Writes the automatically-generated files in the pages directory.
@@ -331,12 +311,35 @@ we use as tags of the categories."
   ;; (message "\nEnd def-blog/pages-prep")
   )
 
+(defun def-blog/cat-indices-prep (properties)
+  "For the \"-cat-indices\" publish targets, generate category index ORG files.
+These files should be written to the cat-indices subdirectory of the
+temporary files workspace.
+- PROPERTIES is as specified in org-publish."
+  ;; TODO
+  )
+
+(defun def-blog/derived-xml-prep (properties)
+  "For the \"-derived-xml\" publish targets, generate XML files.
+These files should be written to the derived-xml subdirectory of the
+temporary files workspace.
+- PROPERTIES is as specified in org-publish."
+  ;; TODO
+  )
+
+(defun def-blog/posts-prep (properties)
+  "For the \"-posts\" publish targets, copy post ORG files into the workspace.
+- PROPERTIES is as specified in org-publish."
+  ;; TODO
+  )
+
 ;;; =================================================================
 ;;; Writing RSS feeds
 
 (defun def-blog/write-rss (properties tmp-basedir
 			   category-tags file-plist-hash)
-  "Write RSS files for the overall site and for each post category.  PROPERTIES are from org-publish."
+  "Write RSS files for the overall site and for each post category.
+- PROPERTIES are from org-publish."
   (let* ((pages-basedir (concatenate 'string tmp-basedir "/pages"))
 	 (all-buf (find-file-noselect (concatenate 'string
 					pages-basedir "rss.xml")))
@@ -634,6 +637,5 @@ file."
 	   ((string= key head-key) recur-cdr)
 	   (t (cons head-pair recur-cdr)))))))
 	   
-
 (provide 'def-blog)
 ;;; def-blog ends here
