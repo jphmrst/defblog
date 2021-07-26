@@ -5,7 +5,9 @@
 
 ;;; Code:
 
-(cl-defmacro def-blog (name base-directory &key
+(cl-defmacro def-blog (name base-directory
+			    blog-title blog-desc blog-url
+			    &key
 			    (src-subdir "src/") (pub-subdir "pub/")
 			    (gen-subdir "gen/")
 			    css-style-subpath
@@ -34,11 +36,12 @@ and CATEGORY-INDEX-CSS-STYLE-SUBPATH are local paths from the BASE-DIRECTORY to
 the CSS stylesheets for those groups of pages.  If not given, these arguments
 take the value of CSS-STYLE-SUBPATH.  For any of these, a NIL value means there
 should be no CSS style sheet."
+
   (unless (file-directory-p base-directory)
     (error "Expected a directory for :base-directory %s" base-directory))
   (unless (string-match "/$" base-directory)
     (setf base-directory (concatenate 'string base-directory "/")))
-  
+  
   (let (;; The stateful structures associated with this blog, to be
 	;; updated before each time the blog HTML is built.  Each of
 	;; these names is associated with a DEFVAR in the macro
@@ -79,9 +82,6 @@ should be no CSS style sheet."
 	;; these names is associated with a DEFUN in the macro
 	;; expansion.
 
-	;; TODO Does not seem to be used anywhere
-	(pages-prep-fn (intern (concatenate 'string
-			       "def-blog/" name "/pages-prep")))
 	(reset-hash-fn (intern (concatenate 'string
 				 "def-blog/" name "/reset-hash")))
 	(cat-indices-prep-fn (intern (concatenate 'string
@@ -89,12 +89,17 @@ should be no CSS style sheet."
 	(derived-xml-prep-fn (intern (concatenate 'string
 				       "def-blog/" name "/derived-xml-prep")))
 	(posts-prep-fn (intern (concatenate 'string
-				 "def-blog/" name "/posts-prep"))))
-    
+				 "def-blog/" name "/posts-prep")))
+	(overall-setup-fn (intern (concatenate 'string
+				    "def-blog/" name "/overall-setup")))
+	(overall-cleanup-fn (intern (concatenate 'string
+				      "def-blog/" name "/overall-cleanup"))))
+    
     `(progn
 
        ;; DEFVARs corresponding to the stateful components of this
        ;; blog.
+       
        (defvar ,file-plists-hash (make-hash-table :test 'eq)
 	 ,(concatenate 'string
 	    "Hashtable for holding properties of the posts and pages of the "
@@ -111,26 +116,33 @@ should be no CSS style sheet."
 
        ;; DEFVARs corresponding to the constants defined for this
        ;; blog.
+
        (defvar ,basedir ,base-directory
 	 ,(concatenate 'string "Base work directory for the " name " blog."))
+       
        (defvar ,src-basedir ,(concatenate 'string base-directory src-subdir)
 	 ,(concatenate 'string
 	    "Directory with the source ORG files of the " name " blog."))
+       
        (defvar ,pub-basedir ,(concatenate 'string base-directory pub-subdir)
 	 ,(concatenate 'string
 	    "Target directory for publishable files of the " name " blog."))
+       
        (defvar ,tmp-basedir ,(concatenate 'string base-directory gen-subdir)
 	 ,(concatenate 'string
 	    "Scratch space directory for the " name " blog."))
+       
        (defvar ,posts-basedir
 	   ,(concatenate 'string base-directory gen-subdir "posts/")
 	 ,(concatenate 'string
 	    "Scratch space directory for copying over posts for the " name " blog."))
+       
        (defvar ,cat-indices-basedir 
 	   ,(concatenate 'string base-directory gen-subdir "cat-indices/")
 	 ,(concatenate 'string
 	    "Scratch space area for generating category index files for the "
 	    name " blog."))
+       
        (defvar ,derived-xml-basedir 
 	   ,(concatenate 'string base-directory gen-subdir "derived-xml/")
 	 ,(concatenate 'string
@@ -144,17 +156,12 @@ should be no CSS style sheet."
        (defvar ,lv2-preamble-plist
 	   '(:html-preamble
 	     "<link rel=stylesheet type=\"text/css\" href=\"../style.css\"/>"))
-
+
        ;; DEFUNs used in the ORG-PUBLISH-PROJECT-ALIST clauses for
        ;; this blog.  Each of these will add additional blog-specific
        ;; parameters to a call to a related function defined after
        ;; this macro expansion.
 
-       ;; TODO Does not seem to be called from anywhere
-       (defun ,pages-prep-fn (properties)
-	 (def-blog/pages-prep properties ,tmp-basedir ,category-tags
-			      ,file-plists-hash))
-       
        (defun ,reset-hash-fn (properties)
 	 (def-blog/reset-hash ,tmp-basedir))
        
@@ -166,7 +173,19 @@ should be no CSS style sheet."
        
        (defun ,posts-prep-fn (properties)
 	 (def-blog/posts-prep-fn properties))
+
+       (defun ,overall-setup-fn (properties)
+	 (def-blog/overall-setup-fn properties))
        
+       (defun ,overall-cleanup-fn (properties)
+	 (def-blog/overall-cleanup-fn properties))
+              
+       (defun ,overall-setup-fn (properties)
+	 (def-blog/overall-setup-fn properties))
+       
+       (defun ,overall-cleanup-fn (properties)
+	 (def-blog/overall-cleanup-fn properties))
+       
        ;; Register this blog with org-project.
        (let ((cleaned-alist (alist-remove-string-key
 			     ,(concatenate 'string name "-top-page")
@@ -188,8 +207,7 @@ should be no CSS style sheet."
 	     ;; directory to the pub directory --- this file only, no
 	     ;; need to copy it anywhere.
 	     (top-page-entry
-	      (list* :preparation-function ',reset-hash-fn
-		     :base-directory ,src-basedir
+	      (list* :base-directory ,src-basedir
 		     :publishing-directory ,pub-basedir
 		     :publishing-function 'org-html-publish-to-html
 		     :section-numbers nil
@@ -219,6 +237,8 @@ should be no CSS style sheet."
 	     ;; Category indices: generate ORG files into tmp space,
 	     ;; and then convert.
 	     (cat-indices-entry
+	      ;; TODO Make sure ,cat-indices-prep-fn only sets up
+	      ;; files in the tmp space, no caching.
 	      (list* :preparation-function ',cat-indices-prep-fn
 		     :base-directory ,cat-indices-basedir
 		     :publishing-directory ,pub-basedir
@@ -227,10 +247,12 @@ should be no CSS style sheet."
 		     :recursive t
 		     
 		     ,lv2-preamble-plist))
-
+
 	     ;; XML files: generate XML files into tmp space, and then
 	     ;; publishing copies over to pub space.
 	     (derived-xml-entry
+	      ;; TODO Make sure ,derived-xml-prep-fn only sets up
+	      ;; files in the tmp space, no caching.
 	      (list :preparation-function ',derived-xml-prep-fn
 		    :base-directory ,derived-xml-basedir
 		    :base-extension "xml"
@@ -253,6 +275,8 @@ should be no CSS style sheet."
 	     ;; subdirectories created as well), and converted from
 	     ;; there.
 	     (posts-entry
+	      ;; TODO Make sure ,posts-prep-fn only sets up files in
+	      ;; the tmp space, no caching.
 	      (list* :preparation-function ',posts-prep-fn
 		     :base-directory ,posts-basedir
 		     :publishing-directory ,pub-basedir
@@ -267,7 +291,9 @@ should be no CSS style sheet."
 		    ,lv2-preamble-plist))
 
 	     (overall-target
-	      '(:components (;; Do *-top-page first; it has the side
+	      '(:preparation-function ',overall-setup-fn
+		:completion-function ',overall-cleanup-fn
+		:components (;; Do *-top-page first; it has the side
 			     ;; effect of updating the properties
 			     ;; hashtable.
 			     ,(concatenate 'string name "-top-page")
@@ -275,7 +301,7 @@ should be no CSS style sheet."
 			     ,(concatenate 'string name "-posts")
 			     ,(concatenate 'string name "-cat-indices")
 			     ,(concatenate 'string name "-statics")))))
-	 
+	 
 	 (setf org-publish-project-alist
 	       (acons ,(concatenate 'string name "-top-page")
 		      top-page-entry
@@ -292,10 +318,10 @@ should be no CSS style sheet."
 							 (acons ,name overall-target
 	       							cleaned-alist)))))))))
        (message "Defined blog %s; use org-publish to generate" ',name))))
-
+
 ;; TODO --- is this used anymore?  But calls in body might be useful.
 (defun def-blog/pages-prep (properties tmp-basedir
-			    category-tags file-plist-hash)
+			    category-tags file-plist-hash blog-name)
   "Writes the automatically-generated files in the pages directory.
 - PROPERTIES is as specified in org-publish.
 - TMP-BASEDIR is the pathname we can use to locate the temporary space.
@@ -307,7 +333,8 @@ we use as tags of the categories."
   ;; DEF-BLOG/PAGES-PREP is called from the first component in the
   ;; ORG-PUBLISH config.
   (def-blog/write-post-indices properties tmp-basedir file-plist-hash)
-  (def-blog/write-rss properties tmp-basedir category-tags file-plist-hash)
+  (def-blog/write-rss properties tmp-basedir category-tags
+		      file-plist-hash blog-name)
   ;; (message "\nEnd def-blog/pages-prep")
   )
 
@@ -332,12 +359,13 @@ temporary files workspace.
 - PROPERTIES is as specified in org-publish."
   ;; TODO
   )
-
+
 ;;; =================================================================
 ;;; Writing RSS feeds
 
-(defun def-blog/write-rss (properties tmp-basedir
-			   category-tags file-plist-hash)
+kj(defun def-blog/write-rss (properties tmp-basedir
+			   category-tags file-plist-hash
+			   blog-name)
   "Write RSS files for the overall site and for each post category.
 - PROPERTIES are from org-publish."
   (let* ((pages-basedir (concatenate 'string tmp-basedir "/pages"))
@@ -346,10 +374,9 @@ temporary files workspace.
 	 (posts-basedir (concatenate 'string tmp-basedir "/posts")))
     (with-current-buffer all-buf
       (erase-buffer)
-      (def-blog/write-rss-opening "JM&#8217;s website"
-				"Occasional notes and observations"
-				"http://maraist.org/atom.xml"
-				"http://maraist.org/"
+      (def-blog/write-rss-opening blog-name blog-desc
+	(concatenate 'string blog-url "atom.xml")
+	blog-url 
 				;; TODO --- Calculate this date
 				"Sat, 02 May 2020 22:07:21 +0000"))
     
@@ -395,7 +422,7 @@ temporary files workspace.
       (def-blog/write-rss-closing)
       (save-buffer 0)
       (kill-buffer all-buf))))
-
+
 (defun def-blog/write-rss-opening (title description
 				 atom-link html-link lastBuiltDate)
   (insert "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
@@ -447,7 +474,7 @@ temporary files workspace.
       (insert "      <description><![CDATA[" desc "]]></description>\n"))
     (insert "      <slash:comments>0</slash:comments>\n")
     (insert "    </item>\n")))
-
+
 ;;; =================================================================
 ;;; Writing index pages
 
@@ -501,6 +528,7 @@ temporary files workspace.
 		  (insert title)
 		  (kill-buffer title-buffer))
 		(insert "#+html_head:  <link rel=stylesheet type=\"text/css\" href=\"../style.css\"/>\n\n")
+
 		(dolist (prop-list
 			 (sort prop-lists
 			       #'(lambda (y x)
@@ -534,20 +562,18 @@ temporary files workspace.
 	      (kill-buffer index-buffer)))))))
   ;; (message "\nEnd def-blog/write-post-indices")
   )
-
-(defun filter (f xs)
-  "The classical filter function: only the elements of XS which satisfy F are retained in the result."
-  (cond
-    ((null xs) nil)
-    ((funcall f (car xs)) (cons (car xs) (filter f (cdr xs))))
-    (t (filter f (cdr xs)))))
+
+(defun def-blog/overall-setup-fn (plist)
+  ;; TODO
+  )
+
+;;; =================================================================
+;;; Managing the file-plist hashtable.
 
 (defun def-blog/fetch-file-plist (path file-plist-hash)
   (let ((result (gethash (intern path) file-plist-hash)))
     ;; (message "Cached %s --> %s" path result)
     result))
-
-;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 (defun def-blog/reset-hash (tmp-basedir file-plist-hash)
   "Set up the properties hash"
@@ -607,7 +633,7 @@ file."
 	    
 	    ;; (message "  result %s" result)
 	    result))))))
-
+
 (defun def-blog/format-orgprops-plist (bare-file path keyvals)
   "Given a key-values list, set up a plist for a file path."
   (let ((bare-date (assoc "DATE" keyvals))
@@ -625,6 +651,18 @@ file."
 (defun def-blog/kwdpair (kwd)
   (let ((data (cadr kwd)))
     (list (plist-get data :key) (plist-get data :value))))
+
+       
+(defun def-blog/overall-cleanup-fn (plist)
+  ;; TODO
+)
+
+(defun def-blog/posts-prep-fn (properties)
+  ;; TODO
+  )
+
+;;; =================================================================
+;;; Miscellaneous utilities
 
 (defun alist-remove-string-key (key alist)
   "Remove all pairs matching KEY from ALIST, where KEY is a string."
@@ -636,6 +674,13 @@ file."
 	 (cond
 	   ((string= key head-key) recur-cdr)
 	   (t (cons head-pair recur-cdr)))))))
-	   
+
+(defun filter (f xs)
+  "The classical filter function: only the elements of XS which satisfy F are retained in the result."
+  (cond
+    ((null xs) nil)
+    ((funcall f (car xs)) (cons (car xs) (filter f (cdr xs))))
+    (t (filter f (cdr xs)))))
+
 (provide 'def-blog)
 ;;; def-blog ends here
