@@ -1,5 +1,5 @@
-;;; def-blog --- A wrapper for org-publish, for producing
-;;; blogs from local Org-mode files.
+;;; def-blog --- A wrapper for org-publish, for producing blogs from
+;;; local Org-mode files.
 
 ;;; Commentary:
 
@@ -82,8 +82,6 @@ should be no CSS style sheet."
 	;; these names is associated with a DEFUN in the macro
 	;; expansion.
 
-	(reset-hash-fn (intern (concatenate 'string
-				 "def-blog/" name "/reset-hash")))
 	(cat-indices-prep-fn (intern (concatenate 'string
 				       "def-blog/" name "/cat-indices-prep")))
 	(derived-xml-prep-fn (intern (concatenate 'string
@@ -162,8 +160,11 @@ should be no CSS style sheet."
        ;; parameters to a call to a related function defined after
        ;; this macro expansion.
 
-       (defun ,reset-hash-fn (properties)
-	 (def-blog/reset-hash ,tmp-basedir))
+       (defun ,overall-setup-fn (properties)
+	 (def-blog/table-setup-fn properties ,tmp-basedir ,src-basedir
+				  ,file-plists-hash ,category-plists-hash
+				  #'(lambda (x) (setf ,category-tags x))
+				  #'(lambda (x) ,category-tags)))
        
        (defun ,cat-indices-prep-fn (properties)
 	 (def-blog/cat-indices-prep properties))
@@ -175,13 +176,10 @@ should be no CSS style sheet."
 	 (def-blog/posts-prep-fn properties))
 
        (defun ,overall-setup-fn (properties)
-	 (def-blog/overall-setup-fn properties))
+	 (def-blog/table-setup-fn properties))
        
        (defun ,overall-cleanup-fn (properties)
 	 (def-blog/overall-cleanup-fn properties))
-              
-       (defun ,overall-setup-fn (properties)
-	 (def-blog/overall-setup-fn properties))
        
        (defun ,overall-cleanup-fn (properties)
 	 (def-blog/overall-cleanup-fn properties))
@@ -319,9 +317,145 @@ should be no CSS style sheet."
 	       							cleaned-alist)))))))))
        (message "Defined blog %s; use org-publish to generate" ',name))))
 
+;;; =================================================================
+;;; Preparing the hash tables and reference lists at the start of a
+;;; blog build.
+(defun def-blog/table-setup-fn (blog-plist tmp-basedir src-basedir
+				file-plist-hash category-plist-hash
+				cat-list-setter cat-list-getter)
+  "Reset the global structures associated with a blog.
+- BLOG-PLIST is the property list provided from ORG-PUBLISH.
+- TMP-BASEDIR is the root directory of the temporary files area
+- FILE-PLIST-HASH is the hashtable from paths to ORG files, to the plist of
+information extracted from that file.
+- CAT-LIST-SETTER and CAT-LIST-GETTER are thunks which set (respectively, get) 
+the category list global variable for this blog."
+  (def-blog/reset-file-plist-hash tmp-basedir file-plist-hash)
+  (def-blog/reset-categories-list src-basedir cat-list-setter)
+  (def-blog/reset-categories-plist-hash src-basedir category-plist-hash)
+  )
+
+;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+;;; Managing the file-plist hashtable.
+
+(defun def-blog/fetch-file-plist (path file-plist-hash)
+  (let ((result (gethash (intern path) file-plist-hash)))
+    ;; (message "Cached %s --> %s" path result)
+    result))
+
+(defun def-blog/reset-file-plist-hash (tmp-basedir file-plist-hash)
+  "Set up the properties hash"
+  (let* ((pages-basedir (concatenate 'string tmp-basedir "/pages"))
+	 (posts-basedir (concatenate 'string tmp-basedir "/posts")))
+    (clrhash file-plist-hash)
+    (dolist (base-dir (list posts-basedir pages-basedir))
+      (let ((base-dir-contents (directory-files base-dir)))
+	(dolist (base-dir-item base-dir-contents)
+	  (let ((base-dir-item-fullpath (concatenate 'string
+					  base-dir base-dir-item)))
+	    (def-blog/process-file-for-hash base-dir-item
+		base-dir-item-fullpath file-plist-hash)))))
+    ;; (message "Finished property hash reset")
+    ))
+
+(defun def-blog/process-file-for-hash (bare-name full-path file-plist-hash)
+  "Recursive function for populating the org properties hash from a given file."
+  ;; (message "Processing %s" full-path)
+  (cond
+    
+    ;; If it's directory, recursively traverse that directory.
+    ((and (file-directory-p full-path) (not (string-match "^\\." bare-name)))
+     ;; (message "- Recurring for directory contents")
+     (let ((dir-contents (directory-files full-path)))
+       (dolist (dir-item dir-contents)
+	 (let ((dir-item-fullpath (concatenate 'string
+				    full-path "/" dir-item)))
+	   (def-blog/process-file-for-hash dir-item
+	       dir-item-fullpath file-plist-hash)))))
+
+    ;; If it's an ORGMODE file, pull and cache its properties.
+    ((string-match "\\.org$" bare-name)
+     (let ((plist (def-blog/build-file-plist bare-name full-path)))
+       ;; (message "- Caching %s --> %s" full-path plist)
+       (puthash (intern full-path) plist file-plist-hash)))
+
+    ;; When debugging we may want to know about this fall-through.
+    ;; (t (message "- No action for %s" full-path))
+    ))
+
+(defun def-blog/build-file-plist (bare-file path)
+  "Extract a list of the properties we need from the file at the given PATH.  BARE-FILE and PATH should refer to the same file; the former excludes all surrounding directories."
+  ;; (message "* Start def-blog/build-file-plist %s" path)
+  (let ((buf (find-file-noselect path)))
+    (with-current-buffer buf
+      (let ((parsed-buffer
+	     (org-element-parse-buffer 'greater-element)))
+	;; (message "  parsed-buffer %s" parsed-buffer)
+	(let ((keyvals (org-element-map parsed-buffer '(keyword)
+			 #'def-blog/kwdpair)))
+	  ;; (message "  keyvals %s" keyvals)
+	  (kill-buffer buf)
+	  (let ((result (def-blog/format-orgprops-plist bare-file
+						      path keyvals)))
+	    
+	    ;; (message "  result %s" result)
+	    result))))))
+
+(defun def-blog/format-orgprops-plist (bare-file path keyvals)
+  "Given a key-values list, set up a plist for a file path."
+  (let ((bare-date (assoc "DATE" keyvals))
+	(bare-updated (assoc "UPDATED" keyvals)))
+    (list :bare bare-file :path path
+	  :title (nth 1 (assoc "TITLE" keyvals))
+	  :desc (nth 1 (assoc "DESCRIPTION" keyvals))
+	  :date (cond
+		  (bare-date (date-to-time (nth 1 bare-date)))
+		  (t nil))
+	  :updated (cond
+		     (bare-updated (date-to-time (nth 1 bare-updated)))
+		     (t nil)))))
+
+(defun def-blog/kwdpair (kwd)
+  (let ((data (cadr kwd)))
+    (list (plist-get data :key) (plist-get data :value))))
+
+(defun def-blog/reset-categories-list (src-basedir cat-list-setter)
+  (let ((category-tag-list nil))
+    ;; Look at each file in the source directory.
+    (dolist (item (directory-files src-basedir))
+
+      ;; We are skipping any dotfiles
+      (unless (string-match "^\\." item)
+	(let ((cat-dir-path (concatenate 'string src-basedir item "/")))
+
+	  ;; We are also only looking at directories
+	  (when (file-directory-p cat-dir-path)
+	  
+	    ;; Make sure there is a category.txt file in this
+	    ;; directory.
+	    (let ((cat-path (concatenate 'string cat-dir-path "category.txt")))
+	      (when (file-regular-p cat-path)
+
+	      ;; Add the tag to the result list
+	      (push item category-tag-list)))))))
+    
+    (funcall cat-list-setter category-tag-list)))
+
+(defun def-blog/reset-categories-plist-hash (src-basedir category-plist-hash)
+  "Given the categories list, rebuild the cateogories plist hashtable."
+  
+  ;; TODO Clear anything previously in the hashtable.
+
+  ;; TODO For each category tag
+  
+	;; TODO Extract the ORG properties of the title.txt file
+	
+	;; TODO Form a plist for the category, and store it in the 
+  )
+
 ;; TODO --- is this used anymore?  But calls in body might be useful.
-(defun def-blog/pages-prep (properties tmp-basedir
-			    category-tags file-plist-hash blog-name)
+(defun def-blog/pages-prep (properties tmp-basedir category-tags
+			    file-plist-hash blog-name blog-desc blog-url)
   "Writes the automatically-generated files in the pages directory.
 - PROPERTIES is as specified in org-publish.
 - TMP-BASEDIR is the pathname we can use to locate the temporary space.
@@ -334,7 +468,7 @@ we use as tags of the categories."
   ;; ORG-PUBLISH config.
   (def-blog/write-post-indices properties tmp-basedir file-plist-hash)
   (def-blog/write-rss properties tmp-basedir category-tags
-		      file-plist-hash blog-name)
+		      file-plist-hash blog-name blog-desc blog-url)
   ;; (message "\nEnd def-blog/pages-prep")
   )
 
@@ -363,11 +497,13 @@ temporary files workspace.
 ;;; =================================================================
 ;;; Writing RSS feeds
 
-kj(defun def-blog/write-rss (properties tmp-basedir
+(defun def-blog/write-rss (properties tmp-basedir
 			   category-tags file-plist-hash
-			   blog-name)
+			   blog-name blog-desc blog-url)
   "Write RSS files for the overall site and for each post category.
-- PROPERTIES are from org-publish."
+- PROPERTIES are from org-publish.
+- CATEGORY-TAGS and FILE-PLIST-HASH are the internal data structures of the
+- BLOG-NAME, BLOG-DESC and BLOG-URL are strings describing the blog itself."
   (let* ((pages-basedir (concatenate 'string tmp-basedir "/pages"))
 	 (all-buf (find-file-noselect (concatenate 'string
 					pages-basedir "rss.xml")))
@@ -562,95 +698,6 @@ kj(defun def-blog/write-rss (properties tmp-basedir
 	      (kill-buffer index-buffer)))))))
   ;; (message "\nEnd def-blog/write-post-indices")
   )
-
-(defun def-blog/overall-setup-fn (plist)
-  ;; TODO
-  )
-
-;;; =================================================================
-;;; Managing the file-plist hashtable.
-
-(defun def-blog/fetch-file-plist (path file-plist-hash)
-  (let ((result (gethash (intern path) file-plist-hash)))
-    ;; (message "Cached %s --> %s" path result)
-    result))
-
-(defun def-blog/reset-hash (tmp-basedir file-plist-hash)
-  "Set up the properties hash"
-  (let* ((pages-basedir (concatenate 'string tmp-basedir "/pages"))
-	 (posts-basedir (concatenate 'string tmp-basedir "/posts")))
-    (clrhash file-plist-hash)
-    (dolist (base-dir (list posts-basedir pages-basedir))
-      (let ((base-dir-contents (directory-files base-dir)))
-	(dolist (base-dir-item base-dir-contents)
-	  (let ((base-dir-item-fullpath (concatenate 'string
-					  base-dir base-dir-item)))
-	    (def-blog/process-file-for-hash base-dir-item
-		base-dir-item-fullpath file-plist-hash)))))
-    ;; (message "Finished property hash reset")
-    ))
-
-(defun def-blog/process-file-for-hash (bare-name full-path file-plist-hash)
-  "Recursive function for populating the org properties hash from a given 
-file."
-  ;; (message "Processing %s" full-path)
-  (cond
-    
-    ;; If it's directory, recursively traverse that directory.
-    ((and (file-directory-p full-path) (not (string-match "^\\." bare-name)))
-     ;; (message "- Recurring for directory contents")
-     (let ((dir-contents (directory-files full-path)))
-       (dolist (dir-item dir-contents)
-	 (let ((dir-item-fullpath (concatenate 'string
-				    full-path "/" dir-item)))
-	   (def-blog/process-file-for-hash dir-item
-	       dir-item-fullpath file-plist-hash)))))
-
-    ;; If it's an ORGMODE file, pull and cache its properties.
-    ((string-match "\\.org$" bare-name)
-     (let ((plist (def-blog/build-file-plist bare-name full-path)))
-       ;; (message "- Caching %s --> %s" full-path plist)
-       (puthash (intern full-path) plist file-plist-hash)))
-
-    ;; When debugging we may want to know about this fall-through.
-    ;; (t (message "- No action for %s" full-path))
-    ))
-
-(defun def-blog/build-file-plist (bare-file path)
-  "Extract a list of the properties we need from the file at the given PATH.  BARE-FILE and PATH should refer to the same file; the former excludes all surrounding directories."
-  ;; (message "* Start def-blog/build-file-plist %s" path)
-  (let ((buf (find-file-noselect path)))
-    (with-current-buffer buf
-      (let ((parsed-buffer
-	     (org-element-parse-buffer 'greater-element)))
-	;; (message "  parsed-buffer %s" parsed-buffer)
-	(let ((keyvals (org-element-map parsed-buffer '(keyword)
-			 #'def-blog/kwdpair)))
-	  ;; (message "  keyvals %s" keyvals)
-	  (kill-buffer buf)
-	  (let ((result (def-blog/format-orgprops-plist bare-file
-						      path keyvals)))
-	    
-	    ;; (message "  result %s" result)
-	    result))))))
-
-(defun def-blog/format-orgprops-plist (bare-file path keyvals)
-  "Given a key-values list, set up a plist for a file path."
-  (let ((bare-date (assoc "DATE" keyvals))
-	(bare-updated (assoc "UPDATED" keyvals)))
-    (list :bare bare-file :path path
-	  :title (nth 1 (assoc "TITLE" keyvals))
-	  :desc (nth 1 (assoc "DESCRIPTION" keyvals))
-	  :date (cond
-		  (bare-date (date-to-time (nth 1 bare-date)))
-		  (t nil))
-	  :updated (cond
-		     (bare-updated (date-to-time (nth 1 bare-updated)))
-		     (t nil)))))
-
-(defun def-blog/kwdpair (kwd)
-  (let ((data (cadr kwd)))
-    (list (plist-get data :key) (plist-get data :value))))
 
        
 (defun def-blog/overall-cleanup-fn (plist)
