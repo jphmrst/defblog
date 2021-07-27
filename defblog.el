@@ -1,11 +1,11 @@
-;;; def-blog --- A wrapper for org-publish, for producing blogs from
+;;; defblog --- A wrapper for org-publish, for producing blogs from
 ;;; local Org-mode files.
 
 ;;; Commentary:
 
 ;;; Code:
 
-(cl-defmacro def-blog (name base-directory
+(cl-defmacro defblog (name base-directory
 			    blog-title blog-desc blog-url
 			    &key
 			    (src-subdir "src/") (pub-subdir "pub/")
@@ -47,35 +47,35 @@ should be no CSS style sheet."
 	;; these names is associated with a DEFVAR in the macro
 	;; expansion.
 	(file-plists-hash (intern (concatenate 'string
-				    "+def-blog/" name "/file-plists-hash+")))
+				    "+defblog/" name "/file-plists-hash+")))
 	(category-tags (intern (concatenate 'string
-				 "*def-blog/" name "/category-tags*")))
+				 "*defblog/" name "/category-tags*")))
 	(category-plists-hash (intern (concatenate 'string
-					"+def-blog/" name
+					"+defblog/" name
 					"/category-plists-hash+")))
 
 	;; Names of global constants associated with this blog.  Each
 	;; of these names is also associated with a DEFVAR in the
 	;; macro expansion.
 	(basedir (intern (concatenate 'string
-			   "+def-blog/" name "/basedir+")))
+			   "+defblog/" name "/basedir+")))
 	(src-basedir (intern (concatenate 'string
-			       "+def-blog/" name "/src-basedir+")))
+			       "+defblog/" name "/src-basedir+")))
 	(pub-basedir (intern (concatenate 'string
-			       "+def-blog/" name "/pub-basedir+")))
+			       "+defblog/" name "/pub-basedir+")))
 	(tmp-basedir (intern (concatenate 'string
-			       "+def-blog/" name "/tmp-basedir+")))
+			       "+defblog/" name "/tmp-basedir+")))
 	(posts-basedir (intern (concatenate 'string
-				 "+def-blog/" name "/posts-basedir+")))
+				 "+defblog/" name "/posts-basedir+")))
 	(cat-indices-basedir (intern (concatenate 'string
-				       "+def-blog/" name "/cat-indices+")))
+				       "+defblog/" name "/cat-indices+")))
 	(derived-xml-basedir (intern (concatenate 'string
-				       "+def-blog/" name "/derived-xml+")))
+				       "+defblog/" name "/derived-xml+")))
 	(lv1-preamble-plist (intern (concatenate 'string
-				      "+def-blog/" name
+				      "+defblog/" name
 				      "/lv1-preamble-plist+")))
 	(lv2-preamble-plist (intern (concatenate 'string
-				      "+def-blog/" name
+				      "+defblog/" name
 				      "/lv2-preamble-plist+")))
 
 	;; Names of functions associated with this blog.  Each of
@@ -83,15 +83,15 @@ should be no CSS style sheet."
 	;; expansion.
 
 	(cat-indices-prep-fn (intern (concatenate 'string
-				       "def-blog/" name "/cat-indices-prep")))
+				       "defblog/" name "/cat-indices-prep")))
 	(derived-xml-prep-fn (intern (concatenate 'string
-				       "def-blog/" name "/derived-xml-prep")))
+				       "defblog/" name "/derived-xml-prep")))
 	(posts-prep-fn (intern (concatenate 'string
-				 "def-blog/" name "/posts-prep")))
+				 "defblog/" name "/posts-prep")))
 	(overall-setup-fn (intern (concatenate 'string
-				    "def-blog/" name "/overall-setup")))
+				    "defblog/" name "/overall-setup")))
 	(overall-cleanup-fn (intern (concatenate 'string
-				      "def-blog/" name "/overall-cleanup"))))
+				      "defblog/" name "/overall-cleanup"))))
     
     `(progn
 
@@ -161,28 +161,28 @@ should be no CSS style sheet."
        ;; this macro expansion.
 
        (defun ,overall-setup-fn (properties)
-	 (def-blog/table-setup-fn properties ,tmp-basedir ,src-basedir
+	 (defblog/table-setup-fn properties ,tmp-basedir ,src-basedir
 				  ,file-plists-hash ,category-plists-hash
 				  #'(lambda (x) (setf ,category-tags x))
 				  #'(lambda (x) ,category-tags)))
        
        (defun ,cat-indices-prep-fn (properties)
-	 (def-blog/cat-indices-prep properties))
+	 (defblog/cat-indices-prep properties))
        
        (defun ,derived-xml-prep-fn (properties)
-	 (def-blog/derived-xml-prep properties))
+	 (defblog/derived-xml-prep properties))
        
        (defun ,posts-prep-fn (properties)
-	 (def-blog/posts-prep-fn properties))
+	 (defblog/posts-prep-fn properties))
 
        (defun ,overall-setup-fn (properties)
-	 (def-blog/table-setup-fn properties))
+	 (defblog/table-setup-fn properties))
        
        (defun ,overall-cleanup-fn (properties)
-	 (def-blog/overall-cleanup-fn properties))
+	 (defblog/overall-cleanup-fn properties))
        
        (defun ,overall-cleanup-fn (properties)
-	 (def-blog/overall-cleanup-fn properties))
+	 (defblog/overall-cleanup-fn properties))
        
        ;; Register this blog with org-project.
        (let ((cleaned-alist (alist-remove-string-key
@@ -320,7 +320,7 @@ should be no CSS style sheet."
 ;;; =================================================================
 ;;; Preparing the hash tables and reference lists at the start of a
 ;;; blog build.
-(defun def-blog/table-setup-fn (blog-plist tmp-basedir src-basedir
+(defun defblog/table-setup-fn (blog-plist tmp-basedir src-basedir
 				file-plist-hash category-plist-hash
 				cat-list-setter cat-list-getter)
   "Reset the global structures associated with a blog.
@@ -330,20 +330,20 @@ should be no CSS style sheet."
 information extracted from that file.
 - CAT-LIST-SETTER and CAT-LIST-GETTER are thunks which set (respectively, get) 
 the category list global variable for this blog."
-  (def-blog/reset-file-plist-hash tmp-basedir file-plist-hash)
-  (def-blog/reset-categories-list src-basedir cat-list-setter)
-  (def-blog/reset-categories-plist-hash src-basedir category-plist-hash)
+  (defblog/reset-file-plist-hash tmp-basedir file-plist-hash)
+  (defblog/reset-categories-list src-basedir cat-list-setter)
+  (defblog/reset-categories-plist-hash src-basedir category-plist-hash)
   )
 
 ;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ;;; Managing the file-plist hashtable.
 
-(defun def-blog/fetch-file-plist (path file-plist-hash)
+(defun defblog/fetch-file-plist (path file-plist-hash)
   (let ((result (gethash (intern path) file-plist-hash)))
     ;; (message "Cached %s --> %s" path result)
     result))
 
-(defun def-blog/reset-file-plist-hash (tmp-basedir file-plist-hash)
+(defun defblog/reset-file-plist-hash (tmp-basedir file-plist-hash)
   "Set up the properties hash"
   (let* ((pages-basedir (concatenate 'string tmp-basedir "/pages"))
 	 (posts-basedir (concatenate 'string tmp-basedir "/posts")))
@@ -353,12 +353,12 @@ the category list global variable for this blog."
 	(dolist (base-dir-item base-dir-contents)
 	  (let ((base-dir-item-fullpath (concatenate 'string
 					  base-dir base-dir-item)))
-	    (def-blog/process-file-for-hash base-dir-item
+	    (defblog/process-file-for-hash base-dir-item
 		base-dir-item-fullpath file-plist-hash)))))
     ;; (message "Finished property hash reset")
     ))
 
-(defun def-blog/process-file-for-hash (bare-name full-path file-plist-hash)
+(defun defblog/process-file-for-hash (bare-name full-path file-plist-hash)
   "Recursive function for populating the org properties hash from a given file."
   ;; (message "Processing %s" full-path)
   (cond
@@ -370,12 +370,12 @@ the category list global variable for this blog."
        (dolist (dir-item dir-contents)
 	 (let ((dir-item-fullpath (concatenate 'string
 				    full-path "/" dir-item)))
-	   (def-blog/process-file-for-hash dir-item
+	   (defblog/process-file-for-hash dir-item
 	       dir-item-fullpath file-plist-hash)))))
 
     ;; If it's an ORGMODE file, pull and cache its properties.
     ((string-match "\\.org$" bare-name)
-     (let ((plist (def-blog/build-file-plist bare-name full-path)))
+     (let ((plist (defblog/build-file-plist bare-name full-path)))
        ;; (message "- Caching %s --> %s" full-path plist)
        (puthash (intern full-path) plist file-plist-hash)))
 
@@ -383,25 +383,25 @@ the category list global variable for this blog."
     ;; (t (message "- No action for %s" full-path))
     ))
 
-(defun def-blog/build-file-plist (bare-file path)
+(defun defblog/build-file-plist (bare-file path)
   "Extract a list of the properties we need from the file at the given PATH.  BARE-FILE and PATH should refer to the same file; the former excludes all surrounding directories."
-  ;; (message "* Start def-blog/build-file-plist %s" path)
+  ;; (message "* Start defblog/build-file-plist %s" path)
   (let ((buf (find-file-noselect path)))
     (with-current-buffer buf
       (let ((parsed-buffer
 	     (org-element-parse-buffer 'greater-element)))
 	;; (message "  parsed-buffer %s" parsed-buffer)
 	(let ((keyvals (org-element-map parsed-buffer '(keyword)
-			 #'def-blog/kwdpair)))
+			 #'defblog/kwdpair)))
 	  ;; (message "  keyvals %s" keyvals)
 	  (kill-buffer buf)
-	  (let ((result (def-blog/format-orgprops-plist bare-file
+	  (let ((result (defblog/format-orgprops-plist bare-file
 						      path keyvals)))
 	    
 	    ;; (message "  result %s" result)
 	    result))))))
 
-(defun def-blog/format-orgprops-plist (bare-file path keyvals)
+(defun defblog/format-orgprops-plist (bare-file path keyvals)
   "Given a key-values list, set up a plist for a file path."
   (let ((bare-date (assoc "DATE" keyvals))
 	(bare-updated (assoc "UPDATED" keyvals)))
@@ -415,11 +415,11 @@ the category list global variable for this blog."
 		     (bare-updated (date-to-time (nth 1 bare-updated)))
 		     (t nil)))))
 
-(defun def-blog/kwdpair (kwd)
+(defun defblog/kwdpair (kwd)
   (let ((data (cadr kwd)))
     (list (plist-get data :key) (plist-get data :value))))
 
-(defun def-blog/reset-categories-list (src-basedir cat-list-setter)
+(defun defblog/reset-categories-list (src-basedir cat-list-setter)
   (let ((category-tag-list nil))
     ;; Look at each file in the source directory.
     (dolist (item (directory-files src-basedir))
@@ -441,7 +441,7 @@ the category list global variable for this blog."
     
     (funcall cat-list-setter category-tag-list)))
 
-(defun def-blog/reset-categories-plist-hash (src-basedir category-plist-hash)
+(defun defblog/reset-categories-plist-hash (src-basedir category-plist-hash)
   "Given the categories list, rebuild the cateogories plist hashtable."
   
   ;; TODO Clear anything previously in the hashtable.
@@ -454,25 +454,25 @@ the category list global variable for this blog."
   )
 
 ;; TODO --- is this used anymore?  But calls in body might be useful.
-(defun def-blog/pages-prep (properties tmp-basedir category-tags
+(defun defblog/pages-prep (properties tmp-basedir category-tags
 			    file-plist-hash blog-name blog-desc blog-url)
   "Writes the automatically-generated files in the pages directory.
 - PROPERTIES is as specified in org-publish.
 - TMP-BASEDIR is the pathname we can use to locate the temporary space.
 - CATEGORY-TAGS is the list of directory names holding post categories, which
 we use as tags of the categories."
-  ;; (message "Start def-blog/pages-prep")
+  ;; (message "Start defblog/pages-prep")
 
   ;; Since this function is called here, make sure that this function
-  ;; DEF-BLOG/PAGES-PREP is called from the first component in the
+  ;; DEFBLOG/PAGES-PREP is called from the first component in the
   ;; ORG-PUBLISH config.
-  (def-blog/write-post-indices properties tmp-basedir file-plist-hash)
-  (def-blog/write-rss properties tmp-basedir category-tags
+  (defblog/write-post-indices properties tmp-basedir file-plist-hash)
+  (defblog/write-rss properties tmp-basedir category-tags
 		      file-plist-hash blog-name blog-desc blog-url)
-  ;; (message "\nEnd def-blog/pages-prep")
+  ;; (message "\nEnd defblog/pages-prep")
   )
 
-(defun def-blog/cat-indices-prep (properties)
+(defun defblog/cat-indices-prep (properties)
   "For the \"-cat-indices\" publish targets, generate category index ORG files.
 These files should be written to the cat-indices subdirectory of the
 temporary files workspace.
@@ -480,7 +480,7 @@ temporary files workspace.
   ;; TODO
   )
 
-(defun def-blog/derived-xml-prep (properties)
+(defun defblog/derived-xml-prep (properties)
   "For the \"-derived-xml\" publish targets, generate XML files.
 These files should be written to the derived-xml subdirectory of the
 temporary files workspace.
@@ -488,7 +488,7 @@ temporary files workspace.
   ;; TODO
   )
 
-(defun def-blog/posts-prep (properties)
+(defun defblog/posts-prep (properties)
   "For the \"-posts\" publish targets, copy post ORG files into the workspace.
 - PROPERTIES is as specified in org-publish."
   ;; TODO
@@ -497,7 +497,7 @@ temporary files workspace.
 ;;; =================================================================
 ;;; Writing RSS feeds
 
-(defun def-blog/write-rss (properties tmp-basedir
+(defun defblog/write-rss (properties tmp-basedir
 			   category-tags file-plist-hash
 			   blog-name blog-desc blog-url)
   "Write RSS files for the overall site and for each post category.
@@ -510,7 +510,7 @@ temporary files workspace.
 	 (posts-basedir (concatenate 'string tmp-basedir "/posts")))
     (with-current-buffer all-buf
       (erase-buffer)
-      (def-blog/write-rss-opening blog-name blog-desc
+      (defblog/write-rss-opening blog-name blog-desc
 	(concatenate 'string blog-url "atom.xml")
 	blog-url 
 				;; TODO --- Calculate this date
@@ -521,7 +521,7 @@ temporary files workspace.
 	     (post-fullpaths (file-expand-wildcards (concatenate 'string
 						      posts-subdir "/*.org")))
 	     (plists (mapcar #'(lambda (p)
-				 (def-blog/fetch-file-plist p file-plist-hash))
+				 (defblog/fetch-file-plist p file-plist-hash))
 			     post-fullpaths))
 	     (rss-buf (find-file-noselect (concatenate 'string
 					    pages-basedir category-tag
@@ -536,7 +536,7 @@ temporary files workspace.
 	     (cat-atom-url (concatenate 'string cat-html-url "atom.xml")))
 	(with-current-buffer rss-buf
 	  (erase-buffer)
-	  (def-blog/write-rss-opening cat-rss-title
+	  (defblog/write-rss-opening cat-rss-title
 				    nil ;; TODO Description here
 				    cat-atom-url cat-html-url
 				    ;; TODO --- Calculate this date
@@ -545,21 +545,21 @@ temporary files workspace.
 	(dolist (plist plists)
 	  ;; TODO Only add things from the last (let's say) five years.
 	  (with-current-buffer all-buf
-	    (def-blog/write-rss-for-plist plist category-tag))
+	    (defblog/write-rss-for-plist plist category-tag))
 	  (with-current-buffer rss-buf
-	    (def-blog/write-rss-for-plist plist category-tag)))
+	    (defblog/write-rss-for-plist plist category-tag)))
 
 	(with-current-buffer rss-buf
-	  (def-blog/write-rss-closing)
+	  (defblog/write-rss-closing)
 	  (save-buffer 0)
 	  (kill-buffer rss-buf))))
     
     (with-current-buffer all-buf
-      (def-blog/write-rss-closing)
+      (defblog/write-rss-closing)
       (save-buffer 0)
       (kill-buffer all-buf))))
 
-(defun def-blog/write-rss-opening (title description
+(defun defblog/write-rss-opening (title description
 				 atom-link html-link lastBuiltDate)
   (insert "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
   (insert "<rss version=\"2.0\"\n")
@@ -582,10 +582,10 @@ temporary files workspace.
   (insert "    <sy:updatePeriod>hourly</sy:updatePeriod>\n")
   (insert "    <sy:updateFrequency>1</sy:updateFrequency>\n"))
 
-(defun def-blog/write-rss-closing ()
+(defun defblog/write-rss-closing ()
   (insert "  </channel>\n</rss>\n"))
 
-(defun def-blog/write-rss-for-plist (plist category-tag)
+(defun defblog/write-rss-for-plist (plist category-tag)
   (let ((title (plist-get plist :title))
 	(bare  (plist-get plist :bare))
 	(date  (plist-get plist :date))
@@ -614,9 +614,9 @@ temporary files workspace.
 ;;; =================================================================
 ;;; Writing index pages
 
-(defun def-blog/write-post-indices (properties tmp-basedir file-plist-hash)
-  "For DEF-BLOG/PAGES-PREP, writes the automatically-generated files in the pages directory.  PROPERTIES is as specified in org-publish."
-  ;; (message "Start def-blog/write-post-indices")
+(defun defblog/write-post-indices (properties tmp-basedir file-plist-hash)
+  "For DEFBLOG/PAGES-PREP, writes the automatically-generated files in the pages directory.  PROPERTIES is as specified in org-publish."
+  ;; (message "Start defblog/write-post-indices")
   (let* ((pages-basedir (concatenate 'string tmp-basedir "/pages"))
 	 (posts-basedir (concatenate 'string tmp-basedir "/posts"))
 	 (post-dir-files (directory-files posts-basedir))
@@ -646,7 +646,7 @@ temporary files workspace.
 		  (mapcar #'(lambda (x)
 			      (let ((full (concatenate 'string
 					    dir "/" x)))
-				(def-blog/fetch-file-plist full
+				(defblog/fetch-file-plist full
 				    file-plist-hash)))
 			  org-files)))
 	    ;; (message "- prop-lists: %s" prop-lists)
@@ -696,15 +696,15 @@ temporary files workspace.
 		    (insert "\n")))
 		(save-buffer 0))
 	      (kill-buffer index-buffer)))))))
-  ;; (message "\nEnd def-blog/write-post-indices")
+  ;; (message "\nEnd defblog/write-post-indices")
   )
 
        
-(defun def-blog/overall-cleanup-fn (plist)
+(defun defblog/overall-cleanup-fn (plist)
   ;; TODO
 )
 
-(defun def-blog/posts-prep-fn (properties)
+(defun defblog/posts-prep-fn (properties)
   ;; TODO
   )
 
@@ -729,5 +729,5 @@ temporary files workspace.
     ((funcall f (car xs)) (cons (car xs) (filter f (cdr xs))))
     (t (filter f (cdr xs)))))
 
-(provide 'def-blog)
-;;; def-blog ends here
+(provide 'defblog)
+;;; defblog ends here
