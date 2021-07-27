@@ -332,8 +332,8 @@ information extracted from that file.
 the category list global variable for this blog."
   (defblog/reset-file-plist-hash tmp-basedir file-plist-hash)
   (defblog/reset-categories-list src-basedir cat-list-setter)
-  (defblog/reset-categories-plist-hash src-basedir category-plist-hash)
-  )
+  (defblog/reset-categories-plist-hash src-basedir
+      (funcall cat-list-getter) category-plist-hash))
 
 ;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ;;; Managing the file-plist hashtable.
@@ -441,58 +441,29 @@ the category list global variable for this blog."
     
     (funcall cat-list-setter category-tag-list)))
 
-(defun defblog/reset-categories-plist-hash (src-basedir category-plist-hash)
+(defun defblog/reset-categories-plist-hash (src-basedir category-tag-list
+					    category-plist-hash)
   "Given the categories list, rebuild the cateogories plist hashtable."
   
-  ;; TODO Clear anything previously in the hashtable.
+  ;; Clear anything previously in the hashtable.
+  (clrhash category-plist-hash)
 
-  ;; TODO For each category tag
+  ;; For each category tag
+  (dolist (cat-tag category-tag-list)
   
-	;; TODO Extract the ORG properties of the title.txt file
+    ;; Extract the ORG properties of the category.txt file.
+    (let ((buf (find-file-noselect (concatenate 'string
+				     src-basedir "category.txt"))))
+      (with-current-buffer buf
+	(let ((parsed-buffer (org-element-parse-buffer 'greater-element)))
 	
-	;; TODO Form a plist for the category, and store it in the 
-  )
-
-;; TODO --- is this used anymore?  But calls in body might be useful.
-(defun defblog/pages-prep (properties tmp-basedir category-tags
-			    file-plist-hash blog-name blog-desc blog-url)
-  "Writes the automatically-generated files in the pages directory.
-- PROPERTIES is as specified in org-publish.
-- TMP-BASEDIR is the pathname we can use to locate the temporary space.
-- CATEGORY-TAGS is the list of directory names holding post categories, which
-we use as tags of the categories."
-  ;; (message "Start defblog/pages-prep")
+	  ;; Form a plist for the category.
+	  (let ((plist `(:tag ,cat-tag
+			      :title (nth 1 (assoc "TITLE" keyvals))
+			      :description (nth 1 (assoc "DESC" keyvals)))))
 
-  ;; Since this function is called here, make sure that this function
-  ;; DEFBLOG/PAGES-PREP is called from the first component in the
-  ;; ORG-PUBLISH config.
-  (defblog/write-post-indices properties tmp-basedir file-plist-hash)
-  (defblog/write-rss properties tmp-basedir category-tags
-		      file-plist-hash blog-name blog-desc blog-url)
-  ;; (message "\nEnd defblog/pages-prep")
-  )
-
-(defun defblog/cat-indices-prep (properties)
-  "For the \"-cat-indices\" publish targets, generate category index ORG files.
-These files should be written to the cat-indices subdirectory of the
-temporary files workspace.
-- PROPERTIES is as specified in org-publish."
-  ;; TODO
-  )
-
-(defun defblog/derived-xml-prep (properties)
-  "For the \"-derived-xml\" publish targets, generate XML files.
-These files should be written to the derived-xml subdirectory of the
-temporary files workspace.
-- PROPERTIES is as specified in org-publish."
-  ;; TODO
-  )
-
-(defun defblog/posts-prep (properties)
-  "For the \"-posts\" publish targets, copy post ORG files into the workspace.
-- PROPERTIES is as specified in org-publish."
-  ;; TODO
-  )
+	    ;; Store the plist in the hash.
+	    (puthash (intern cat-tag) plist category-plist-hash)))))))
 
 ;;; =================================================================
 ;;; Writing RSS feeds
@@ -705,6 +676,47 @@ temporary files workspace.
 )
 
 (defun defblog/posts-prep-fn (properties)
+  ;; TODO
+  )
+
+;; TODO --- is this used anymore?  But calls in body might be useful.
+(defun defblog/pages-prep (properties tmp-basedir category-tags
+			    file-plist-hash blog-name blog-desc blog-url)
+  "Writes the automatically-generated files in the pages directory.
+- PROPERTIES is as specified in org-publish.
+- TMP-BASEDIR is the pathname we can use to locate the temporary space.
+- CATEGORY-TAGS is the list of directory names holding post categories, which
+we use as tags of the categories."
+  ;; (message "Start defblog/pages-prep")
+
+  ;; Since this function is called here, make sure that this function
+  ;; DEFBLOG/PAGES-PREP is called from the first component in the
+  ;; ORG-PUBLISH config.
+  (defblog/write-post-indices properties tmp-basedir file-plist-hash)
+  (defblog/write-rss properties tmp-basedir category-tags
+		      file-plist-hash blog-name blog-desc blog-url)
+  ;; (message "\nEnd defblog/pages-prep")
+  )
+
+(defun defblog/cat-indices-prep (properties)
+  "For the \"-cat-indices\" publish targets, generate category index ORG files.
+These files should be written to the cat-indices subdirectory of the
+temporary files workspace.
+- PROPERTIES is as specified in org-publish."
+  ;; TODO
+  )
+
+(defun defblog/derived-xml-prep (properties)
+  "For the \"-derived-xml\" publish targets, generate XML files.
+These files should be written to the derived-xml subdirectory of the
+temporary files workspace.
+- PROPERTIES is as specified in org-publish."
+  ;; TODO
+  )
+
+(defun defblog/posts-prep (properties)
+  "For the \"-posts\" publish targets, copy post ORG files into the workspace.
+- PROPERTIES is as specified in org-publish."
   ;; TODO
   )
 
