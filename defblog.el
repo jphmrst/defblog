@@ -6,16 +6,16 @@
 ;;; Code:
 
 (cl-defmacro defblog (name base-directory
-			    blog-title blog-desc blog-url
-			    &key
-			    (src-subdir "src/") (pub-subdir "pub/")
-			    (gen-subdir "gen/")
-			    css-style-subpath
-			    (frontpage-css-style-subpath css-style-subpath)
-			    (page-css-style-subpath css-style-subpath)
-			    (post-css-style-subpath css-style-subpath)
-			    (category-index-css-style-subpath
-			     css-style-subpath))
+			   blog-title blog-desc blog-url
+			   &key
+			   (src-subdir "src/") (pub-subdir "pub/")
+			   (gen-subdir "gen/")
+			   css-style-subpath
+			   (frontpage-css-style-subpath css-style-subpath)
+			   (page-css-style-subpath css-style-subpath)
+			   (post-css-style-subpath css-style-subpath)
+			   (category-index-css-style-subpath
+			    css-style-subpath))
   "Declare a simple-structured blog to be published with ORG-PUBLISH.
 
 Required parameters:
@@ -91,22 +91,27 @@ should be no CSS style sheet."
 	(overall-setup-fn (intern (concatenate 'string
 				    "defblog/" name "/overall-setup")))
 	(overall-cleanup-fn (intern (concatenate 'string
-				      "defblog/" name "/overall-cleanup"))))
+				      "defblog/" name "/overall-cleanup")))
+	(state-dump-fn (intern (concatenate 'string
+				      "defblog/" name "/state-dump"))))
     
     `(progn
 
        ;; DEFVARs corresponding to the stateful components of this
        ;; blog.
-       
+
+       (when (boundp ',file-plists-hash) (makunbound ',file-plists-hash))
        (defvar ,file-plists-hash (make-hash-table :test 'eq)
 	 ,(concatenate 'string
 	    "Hashtable for holding properties of the posts and pages of the "
 	    name " blog."))
        
+       (when (boundp ',category-tags) (makunbound ',category-tags))
        (defvar ,category-tags nil
 	 ,(concatenate 'string
 	    "Storage for the list of categories in the " name " blog."))
 
+       (when (boundp ',category-plists-hash) (makunbound ',category-plists-hash))
        (defvar ,category-plists-hash (make-hash-table :test 'eq)
 	 ,(concatenate 'string
 	    "Hashtable for holding properties of the categories of the "
@@ -115,42 +120,51 @@ should be no CSS style sheet."
        ;; DEFVARs corresponding to the constants defined for this
        ;; blog.
 
+       (when (boundp ',basedir) (makunbound ',basedir))
        (defvar ,basedir ,base-directory
 	 ,(concatenate 'string "Base work directory for the " name " blog."))
        
+       (when (boundp ',src-basedir) (makunbound ',src-basedir))
        (defvar ,src-basedir ,(concatenate 'string base-directory src-subdir)
 	 ,(concatenate 'string
 	    "Directory with the source ORG files of the " name " blog."))
        
+       (when (boundp ',pub-basedir) (makunbound ',pub-basedir))
        (defvar ,pub-basedir ,(concatenate 'string base-directory pub-subdir)
 	 ,(concatenate 'string
 	    "Target directory for publishable files of the " name " blog."))
        
+       (when (boundp ',tmp-basedir) (makunbound ',tmp-basedir))
        (defvar ,tmp-basedir ,(concatenate 'string base-directory gen-subdir)
 	 ,(concatenate 'string
 	    "Scratch space directory for the " name " blog."))
        
+       (when (boundp ',posts-basedir) (makunbound ',posts-basedir))
        (defvar ,posts-basedir
 	   ,(concatenate 'string base-directory gen-subdir "posts/")
 	 ,(concatenate 'string
 	    "Scratch space directory for copying over posts for the " name " blog."))
        
+       (when (boundp ',cat-indices-basedir) (makunbound ',cat-indices-basedir))
        (defvar ,cat-indices-basedir 
 	   ,(concatenate 'string base-directory gen-subdir "cat-indices/")
 	 ,(concatenate 'string
 	    "Scratch space area for generating category index files for the "
 	    name " blog."))
        
+       (when (boundp ',derived-xml-basedir) (makunbound ',derived-xml-basedir))
        (defvar ,derived-xml-basedir 
 	   ,(concatenate 'string base-directory gen-subdir "derived-xml/")
 	 ,(concatenate 'string
 	    "Scratch space area for generating XML files for the "
 	    name " blog."))
 
+       (when (boundp ',lv1-preamble-plist) (makunbound ',lv1-preamble-plist))
        (defvar ,lv1-preamble-plist
 	   '(:html-preamble
 	     "<link rel=stylesheet type=\"text/css\" href=\"./style.css\"/>"))
 
+       (when (boundp ',lv2-preamble-plist) (makunbound ',lv2-preamble-plist))
        (defvar ,lv2-preamble-plist
 	   '(:html-preamble
 	     "<link rel=stylesheet type=\"text/css\" href=\"../style.css\"/>"))
@@ -164,7 +178,14 @@ should be no CSS style sheet."
 	 (defblog/table-setup-fn properties ,tmp-basedir ,src-basedir
 				  ,file-plists-hash ,category-plists-hash
 				  #'(lambda (x) (setf ,category-tags x))
-				  #'(lambda (x) ,category-tags)))
+				  #'(lambda () ,category-tags)))
+
+       (defun ,overall-cleanup-fn (properties)
+	 (defblog/overall-cleanup-fn properties))
+       
+       (defun ,state-dump-fn ()
+	 (defblog/state-dump ,file-plists-hash
+	     ,category-tags ,category-plists-hash))
        
        (defun ,cat-indices-prep-fn (properties)
 	 (defblog/cat-indices-prep properties))
@@ -174,15 +195,6 @@ should be no CSS style sheet."
        
        (defun ,posts-prep-fn (properties)
 	 (defblog/posts-prep-fn properties))
-
-       (defun ,overall-setup-fn (properties)
-	 (defblog/table-setup-fn properties))
-       
-       (defun ,overall-cleanup-fn (properties)
-	 (defblog/overall-cleanup-fn properties))
-       
-       (defun ,overall-cleanup-fn (properties)
-	 (defblog/overall-cleanup-fn properties))
        
        ;; Register this blog with org-project.
        (let ((cleaned-alist (alist-remove-string-key
@@ -330,7 +342,7 @@ should be no CSS style sheet."
 information extracted from that file.
 - CAT-LIST-SETTER and CAT-LIST-GETTER are thunks which set (respectively, get) 
 the category list global variable for this blog."
-  (defblog/reset-file-plist-hash tmp-basedir file-plist-hash)
+  (defblog/reset-file-plist-hash src-basedir file-plist-hash)
   (defblog/reset-categories-list src-basedir cat-list-setter)
   (defblog/reset-categories-plist-hash src-basedir
       (funcall cat-list-getter) category-plist-hash))
@@ -343,24 +355,21 @@ the category list global variable for this blog."
     ;; (message "Cached %s --> %s" path result)
     result))
 
-(defun defblog/reset-file-plist-hash (tmp-basedir file-plist-hash)
+(defun defblog/reset-file-plist-hash (src-basedir file-plist-hash)
   "Set up the properties hash"
-  (let* ((pages-basedir (concatenate 'string tmp-basedir "/pages"))
-	 (posts-basedir (concatenate 'string tmp-basedir "/posts")))
-    (clrhash file-plist-hash)
-    (dolist (base-dir (list posts-basedir pages-basedir))
-      (let ((base-dir-contents (directory-files base-dir)))
-	(dolist (base-dir-item base-dir-contents)
-	  (let ((base-dir-item-fullpath (concatenate 'string
-					  base-dir base-dir-item)))
-	    (defblog/process-file-for-hash base-dir-item
-		base-dir-item-fullpath file-plist-hash)))))
-    ;; (message "Finished property hash reset")
-    ))
+  (clrhash file-plist-hash)
+  (let ((top-contents (directory-files src-basedir)))
+    (dolist (item top-contents)
+      (let ((item-fullpath (concatenate 'string src-basedir item)))
+	(defblog/process-file-for-hash item item-fullpath file-plist-hash))))
+  ;; (message "Finished property hash reset")
+  )
 
 (defun defblog/process-file-for-hash (bare-name full-path file-plist-hash)
   "Recursive function for populating the org properties hash from a given file."
   ;; (message "Processing %s" full-path)
+  (when (file-directory-p full-path)
+      (setf full-path (concatenate 'string full-path "/")))
   (cond
     
     ;; If it's directory, recursively traverse that directory.
@@ -421,23 +430,30 @@ the category list global variable for this blog."
 
 (defun defblog/reset-categories-list (src-basedir cat-list-setter)
   (let ((category-tag-list nil))
+    ;; (message "srcdir %s" src-basedir)
+    ;; (message "items %s" (directory-files src-basedir))
+
     ;; Look at each file in the source directory.
     (dolist (item (directory-files src-basedir))
-
+      ;; (message "Checking %s" item)
+      
       ;; We are skipping any dotfiles
       (unless (string-match "^\\." item)
+	;; (message "- not a dotfile")
 	(let ((cat-dir-path (concatenate 'string src-basedir item "/")))
-
+	  
 	  ;; We are also only looking at directories
 	  (when (file-directory-p cat-dir-path)
+	    ;; (message "- is a directory")
 	  
 	    ;; Make sure there is a category.txt file in this
 	    ;; directory.
 	    (let ((cat-path (concatenate 'string cat-dir-path "category.txt")))
 	      (when (file-regular-p cat-path)
 
-	      ;; Add the tag to the result list
-	      (push item category-tag-list)))))))
+		;; Add the tag to the result list
+		;; (message "- include %s in category list" item)
+		(push item category-tag-list)))))))
     
     (funcall cat-list-setter category-tag-list)))
 
@@ -452,18 +468,27 @@ the category list global variable for this blog."
   (dolist (cat-tag category-tag-list)
   
     ;; Extract the ORG properties of the category.txt file.
-    (let ((buf (find-file-noselect (concatenate 'string
-				     src-basedir "category.txt"))))
+    (let* ((full-path (concatenate 'string
+			src-basedir cat-tag "/category.txt"))
+	   (buf (find-file-noselect full-path)))
       (with-current-buffer buf
-	(let ((parsed-buffer (org-element-parse-buffer 'greater-element)))
+	(org-mode)
+	(let* ((parsed-buffer (org-element-parse-buffer 'greater-element))
+	       (keyvals (org-element-map parsed-buffer '(keyword)
+			  #'defblog/kwdpair)))
+	  (kill-buffer buf)
 	
 	  ;; Form a plist for the category.
 	  (let ((plist `(:tag ,cat-tag
 			      :title (nth 1 (assoc "TITLE" keyvals))
-			      :description (nth 1 (assoc "DESC" keyvals)))))
+			      :description (nth 1 (assoc "DESCRIPTION"
+							 keyvals)))))
 
 	    ;; Store the plist in the hash.
-	    (puthash (intern cat-tag) plist category-plist-hash)))))))
+	    ;; (message "%s\n  %s %s\n  %s %s" full-path cat-tag keyvals (intern cat-tag) plist)
+	    (puthash (intern cat-tag) plist category-plist-hash)
+	    ;; (message "  %s" (gethash (intern cat-tag) +defblog/maraist/category-plists-hash+))
+	    ))))))
 
 ;;; =================================================================
 ;;; Writing RSS feeds
@@ -719,6 +744,17 @@ temporary files workspace.
 - PROPERTIES is as specified in org-publish."
   ;; TODO
   )
+
+;;; =================================================================
+;;; Debugging utilities
+
+(defun defblog/state-dump (file-plists-hash cat-list cat-plists-hash)
+  (dolist (file (hash-table-keys file-plists-hash))
+    (message "%s\n ==> %s\n" file (gethash file file-plists-hash)))
+  (message "\nCategories: %s\n" cat-list)
+  (message "\nCat hash: %s\n" cat-plists-hash)
+  (dolist (cat cat-list)
+    (message "%s\n ==> %s\n" cat (gethash (intern cat) cat-plists-hash))))
 
 ;;; =================================================================
 ;;; Miscellaneous utilities
