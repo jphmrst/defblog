@@ -69,8 +69,8 @@ should be no CSS style sheet."
 				 "+defblog/" name "/posts-basedir+")))
 	(cat-indices-basedir (intern (concatenate 'string
 				       "+defblog/" name "/cat-indices+")))
-	(derived-xml-basedir (intern (concatenate 'string
-				       "+defblog/" name "/derived-xml+")))
+	(gen-statics-basedir (intern (concatenate 'string
+				       "+defblog/" name "/gen-statics+")))
 	(lv1-preamble-plist (intern (concatenate 'string
 				      "+defblog/" name
 				      "/lv1-preamble-plist+")))
@@ -84,8 +84,8 @@ should be no CSS style sheet."
 
 	(cat-indices-prep-fn (intern (concatenate 'string
 				       "defblog/" name "/cat-indices-prep")))
-	(derived-xml-prep-fn (intern (concatenate 'string
-				       "defblog/" name "/derived-xml-prep")))
+	(gen-statics-prep-fn (intern (concatenate 'string
+				       "defblog/" name "/gen-statics-prep")))
 	(posts-prep-fn (intern (concatenate 'string
 				 "defblog/" name "/posts-prep")))
 	(overall-setup-fn (intern (concatenate 'string
@@ -111,7 +111,8 @@ should be no CSS style sheet."
 	 ,(concatenate 'string
 	    "Storage for the list of categories in the " name " blog."))
 
-       (when (boundp ',category-plists-hash) (makunbound ',category-plists-hash))
+       (when (boundp ',category-plists-hash)
+	 (makunbound ',category-plists-hash))
        (defvar ,category-plists-hash (make-hash-table :test 'eq)
 	 ,(concatenate 'string
 	    "Hashtable for holding properties of the categories of the "
@@ -152,9 +153,9 @@ should be no CSS style sheet."
 	    "Scratch space area for generating category index files for the "
 	    name " blog."))
        
-       (when (boundp ',derived-xml-basedir) (makunbound ',derived-xml-basedir))
-       (defvar ,derived-xml-basedir 
-	   ,(concatenate 'string base-directory gen-subdir "derived-xml/")
+       (when (boundp ',gen-statics-basedir) (makunbound ',gen-statics-basedir))
+       (defvar ,gen-statics-basedir 
+	   ,(concatenate 'string base-directory gen-subdir "gen-statics/")
 	 ,(concatenate 'string
 	    "Scratch space area for generating XML files for the "
 	    name " blog."))
@@ -175,27 +176,38 @@ should be no CSS style sheet."
        ;; this macro expansion.
 
        (defun ,overall-setup-fn (properties)
+	 (message "--------------------\nSetting up defblog temp structures")
 	 (defblog/table-setup-fn properties ,tmp-basedir ,src-basedir
 				  ,file-plists-hash ,category-plists-hash
 				  #'(lambda (x) (setf ,category-tags x))
-				  #'(lambda () ,category-tags)))
+				  #'(lambda () ,category-tags))
+	 (,state-dump-fn)
+	 )
 
        (defun ,overall-cleanup-fn (properties)
-	 (defblog/overall-cleanup-fn properties))
-       
+	 (message "Cleaning up defblog temp structures")
+	 (clrhash ,file-plists-hash)
+	 (clrhash ,category-plists-hash)
+	 (setf ,category-tags nil))
+
        (defun ,state-dump-fn ()
 	 (defblog/state-dump ,file-plists-hash
 	     ,category-tags ,category-plists-hash))
-       
+
        (defun ,cat-indices-prep-fn (properties)
-	 (defblog/cat-indices-prep properties))
-       
-       (defun ,derived-xml-prep-fn (properties)
-	 (defblog/derived-xml-prep properties))
-       
+	 (defblog/cat-indices-prep #'(lambda () ,category-tags)
+	     ,category-plists-hash ,file-plists-hash
+	     ,tmp-basedir ,src-basedir))
+
+       (defun ,gen-statics-prep-fn (properties)
+	 (defblog/gen-statics-prep properties ,tmp-basedir ,category-tags
+				   ,file-plists-hash
+				   ,blog-title ,blog-desc ,blog-url))
+
        (defun ,posts-prep-fn (properties)
-	 (defblog/posts-prep-fn properties))
-       
+	 (defblog/posts-prep ,category-tags ,category-plists-hash
+	   ,tmp-basedir ,src-basedir))
+
        ;; Register this blog with org-project.
        (let ((cleaned-alist (alist-remove-string-key
 			     ,(concatenate 'string name "-top-page")
@@ -204,9 +216,9 @@ should be no CSS style sheet."
 			      (alist-remove-string-key
 			       ,(concatenate 'string name "-cat-indices")
 			       (alist-remove-string-key
-				,(concatenate 'string name "-derived-xml")
+				,(concatenate 'string name "-gen-statics")
 				(alist-remove-string-key
-				 ,(concatenate 'string name "-statics")
+				 ,(concatenate 'string name "-src-statics")
 				 (alist-remove-string-key
 				  ,(concatenate 'string name "-posts")
 				  (alist-remove-string-key
@@ -217,7 +229,8 @@ should be no CSS style sheet."
 	     ;; directory to the pub directory --- this file only, no
 	     ;; need to copy it anywhere.
 	     (top-page-entry
-	      (list* :base-directory ,src-basedir
+	      (list* :preparation-function ',overall-setup-fn
+		     :base-directory ,src-basedir
 		     :publishing-directory ,pub-basedir
 		     :publishing-function 'org-html-publish-to-html
 		     :section-numbers nil
@@ -235,21 +248,21 @@ should be no CSS style sheet."
 	     ;; But maybe these should really be copied with
 	     ;; header/footer org-text into scratch area?
 	     (pages-entry
-	      (list* :base-directory ,src-basedir
+	      (list* :publishing-function 'org-html-publish-to-html
+		     :base-directory ,src-basedir
 		     :publishing-directory ,pub-basedir
 		     :exclude "index.org"
 		     :html-postamble
 		     "<a href=\"./\">Back to the top</a>."
 		     :recursive nil
-			     
+		     	     
 		     ,lv1-preamble-plist))
 
 	     ;; Category indices: generate ORG files into tmp space,
 	     ;; and then convert.
 	     (cat-indices-entry
-	      ;; TODO Make sure ,cat-indices-prep-fn only sets up
-	      ;; files in the tmp space, no caching.
 	      (list* :preparation-function ',cat-indices-prep-fn
+		     :publishing-function 'org-html-publish-to-html
 		     :base-directory ,cat-indices-basedir
 		     :publishing-directory ,pub-basedir
 		     :html-postamble
@@ -260,18 +273,18 @@ should be no CSS style sheet."
 
 	     ;; XML files: generate XML files into tmp space, and then
 	     ;; publishing copies over to pub space.
-	     (derived-xml-entry
-	      ;; TODO Make sure ,derived-xml-prep-fn only sets up
+	     (gen-statics-entry
+	      ;; TODO Make sure ,gen-statics-prep-fn only sets up
 	      ;; files in the tmp space, no caching.
-	      (list :preparation-function ',derived-xml-prep-fn
-		    :base-directory ,derived-xml-basedir
+	      (list :preparation-function ',gen-statics-prep-fn
+		    :base-directory ,gen-statics-basedir
 		    :base-extension "xml"
 		    :publishing-directory ,pub-basedir
 		    :recursive t))
 
 	     ;; Static files in the source directory that can be
 	     ;; copied over to pub space without translation.
-	     (statics-entry
+	     (src-statics-entry
 	      (list :base-directory ,src-basedir
 		    :base-extension "html\\|css\\|jpg\\|gif\\|png\\|xml"
 		    :publishing-directory ,pub-basedir
@@ -301,32 +314,35 @@ should be no CSS style sheet."
 		    ,lv2-preamble-plist))
 
 	     (overall-target
-	      '(:preparation-function ',overall-setup-fn
-		:completion-function ',overall-cleanup-fn
+	      '(:completion-function ,overall-cleanup-fn
 		:components (;; Do *-top-page first; it has the side
 			     ;; effect of updating the properties
 			     ;; hashtable.
 			     ,(concatenate 'string name "-top-page")
 			     ,(concatenate 'string name "-pages")
-			     ,(concatenate 'string name "-posts")
 			     ,(concatenate 'string name "-cat-indices")
-			     ,(concatenate 'string name "-statics")))))
+			     ,(concatenate 'string name "-posts")
+			     ,(concatenate 'string name "-src-statics")
+			     ;; ,(concatenate 'string name "-gen-statics")
+			     ))))
 	 
-	 (setf org-publish-project-alist
-	       (acons ,(concatenate 'string name "-top-page")
-		      top-page-entry
-		      (acons ,(concatenate 'string name "-pages")
-			     pages-entry
-			     (acons ,(concatenate 'string name "-cat-indices")
-				    cat-indices-entry
-				    (acons ,(concatenate 'string name "-derived-xml")
-					   derived-xml-entry
-					   (acons ,(concatenate 'string name "-statics")
-						  statics-entry
-						  (acons ,(concatenate 'string name "-posts")
-							 posts-entry
-							 (acons ,name overall-target
-	       							cleaned-alist)))))))))
+	 (setf org-publish-project-alist cleaned-alist)
+	 (push (cons ,(concatenate 'string name "-top-page") top-page-entry)
+	       org-publish-project-alist)
+	 (push (cons ,(concatenate 'string name "-pages") pages-entry)
+	       org-publish-project-alist)
+	 (push (cons ,(concatenate 'string name "-cat-indices")
+		     cat-indices-entry)
+	       org-publish-project-alist)
+	 (push (cons ,(concatenate 'string name "-gen-statics")
+		     gen-statics-entry)
+	       org-publish-project-alist)
+	 (push (cons ,(concatenate 'string name "-src-statics")
+		     src-statics-entry)
+	       org-publish-project-alist)
+	 (push (cons ,(concatenate 'string name "-posts") posts-entry)
+	       org-publish-project-alist)
+	 (push (cons ,name overall-target) org-publish-project-alist))
        (message "Defined blog %s; use org-publish to generate" ',name))))
 
 ;;; =================================================================
@@ -345,7 +361,9 @@ the category list global variable for this blog."
   (defblog/reset-file-plist-hash src-basedir file-plist-hash)
   (defblog/reset-categories-list src-basedir cat-list-setter)
   (defblog/reset-categories-plist-hash src-basedir
-      (funcall cat-list-getter) category-plist-hash))
+      (funcall cat-list-getter) category-plist-hash)
+  ;; TODO --- clear out the published and temporary spaces
+  )
 
 ;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ;;; Managing the file-plist hashtable.
@@ -361,11 +379,12 @@ the category list global variable for this blog."
   (let ((top-contents (directory-files src-basedir)))
     (dolist (item top-contents)
       (let ((item-fullpath (concatenate 'string src-basedir item)))
-	(defblog/process-file-for-hash item item-fullpath file-plist-hash))))
+	(defblog/process-file-for-hash item 0 item-fullpath file-plist-hash))))
   ;; (message "Finished property hash reset")
   )
 
-(defun defblog/process-file-for-hash (bare-name full-path file-plist-hash)
+(defun defblog/process-file-for-hash (bare-name depth full-path
+				      file-plist-hash)
   "Recursive function for populating the org properties hash from a given file."
   ;; (message "Processing %s" full-path)
   (when (file-directory-p full-path)
@@ -377,14 +396,13 @@ the category list global variable for this blog."
      ;; (message "- Recurring for directory contents")
      (let ((dir-contents (directory-files full-path)))
        (dolist (dir-item dir-contents)
-	 (let ((dir-item-fullpath (concatenate 'string
-				    full-path "/" dir-item)))
-	   (defblog/process-file-for-hash dir-item
+	 (let ((dir-item-fullpath (concatenate 'string full-path dir-item)))
+	   (defblog/process-file-for-hash dir-item (+ 1 depth)
 	       dir-item-fullpath file-plist-hash)))))
 
     ;; If it's an ORGMODE file, pull and cache its properties.
     ((string-match "\\.org$" bare-name)
-     (let ((plist (defblog/build-file-plist bare-name full-path)))
+     (let ((plist (defblog/build-file-plist bare-name full-path depth)))
        ;; (message "- Caching %s --> %s" full-path plist)
        (puthash (intern full-path) plist file-plist-hash)))
 
@@ -392,7 +410,7 @@ the category list global variable for this blog."
     ;; (t (message "- No action for %s" full-path))
     ))
 
-(defun defblog/build-file-plist (bare-file path)
+(defun defblog/build-file-plist (bare-file path depth)
   "Extract a list of the properties we need from the file at the given PATH.  BARE-FILE and PATH should refer to the same file; the former excludes all surrounding directories."
   ;; (message "* Start defblog/build-file-plist %s" path)
   (let ((buf (find-file-noselect path)))
@@ -405,17 +423,18 @@ the category list global variable for this blog."
 	  ;; (message "  keyvals %s" keyvals)
 	  (kill-buffer buf)
 	  (let ((result (defblog/format-orgprops-plist bare-file
-						      path keyvals)))
+			    path depth keyvals)))
 	    
 	    ;; (message "  result %s" result)
 	    result))))))
 
-(defun defblog/format-orgprops-plist (bare-file path keyvals)
+(defun defblog/format-orgprops-plist (bare-file path depth keyvals)
   "Given a key-values list, set up a plist for a file path."
   (let ((bare-date (assoc "DATE" keyvals))
 	(bare-updated (assoc "UPDATED" keyvals)))
     (list :bare bare-file :path path
 	  :title (nth 1 (assoc "TITLE" keyvals))
+	  :depth depth
 	  :desc (nth 1 (assoc "DESCRIPTION" keyvals))
 	  :date (cond
 		  (bare-date (date-to-time (nth 1 bare-date)))
@@ -468,9 +487,11 @@ the category list global variable for this blog."
   (dolist (cat-tag category-tag-list)
   
     ;; Extract the ORG properties of the category.txt file.
-    (let* ((full-path (concatenate 'string
-			src-basedir cat-tag "/category.txt"))
-	   (buf (find-file-noselect full-path)))
+    (let* ((cat-src-dir (concatenate 'string src-basedir cat-tag "/"))
+	   (full-path (concatenate 'string cat-src-dir "category.txt"))
+	   (buf (find-file-noselect full-path))
+	   (posts-list (filter #'(lambda (n) (string-match "\\.org$" n))
+			       (directory-files cat-src-dir))))
       (with-current-buffer buf
 	(org-mode)
 	(let* ((parsed-buffer (org-element-parse-buffer 'greater-element))
@@ -480,9 +501,10 @@ the category list global variable for this blog."
 	
 	  ;; Form a plist for the category.
 	  (let ((plist `(:tag ,cat-tag
-			      :title (nth 1 (assoc "TITLE" keyvals))
-			      :description (nth 1 (assoc "DESCRIPTION"
-							 keyvals)))))
+			      :title ,(nth 1 (assoc "TITLE" keyvals))
+			      :description ,(nth 1 (assoc "DESCRIPTION"
+							  keyvals))
+			      :post-files ,posts-list)))
 
 	    ;; Store the plist in the hash.
 	    ;; (message "%s\n  %s %s\n  %s %s" full-path cat-tag keyvals (intern cat-tag) plist)
@@ -500,20 +522,20 @@ the category list global variable for this blog."
 - PROPERTIES are from org-publish.
 - CATEGORY-TAGS and FILE-PLIST-HASH are the internal data structures of the
 - BLOG-NAME, BLOG-DESC and BLOG-URL are strings describing the blog itself."
-  (let* ((pages-basedir (concatenate 'string tmp-basedir "/pages"))
+  (let* ((pages-basedir (concatenate 'string tmp-basedir "gen-statics/"))
 	 (all-buf (find-file-noselect (concatenate 'string
-					pages-basedir "rss.xml")))
-	 (posts-basedir (concatenate 'string tmp-basedir "/posts")))
+					pages-basedir "rss.xml"))))
     (with-current-buffer all-buf
       (erase-buffer)
       (defblog/write-rss-opening blog-name blog-desc
-	(concatenate 'string blog-url "atom.xml")
-	blog-url 
-				;; TODO --- Calculate this date
-				"Sat, 02 May 2020 22:07:21 +0000"))
+	(concatenate 'string blog-url "atom.xml") blog-url 
+	;; TODO --- Calculate this date
+	"Sat, 02 May 2020 22:07:21 +0000"))
     
     (dolist (category-tag category-tags)
-      (let* ((posts-subdir (concatenate 'string posts-basedir category-tag))
+      (let* (;; TODO NEXT --- this should retrieve from the stored
+	     ;; category plist :post-files
+	     (posts-subdir (concatenate 'string posts-basedir category-tag))
 	     (post-fullpaths (file-expand-wildcards (concatenate 'string
 						      posts-subdir "/*.org")))
 	     (plists (mapcar #'(lambda (p)
@@ -695,13 +717,121 @@ the category list global variable for this blog."
   ;; (message "\nEnd defblog/write-post-indices")
   )
 
-       
-(defun defblog/overall-cleanup-fn (plist)
-  ;; TODO
-)
+;;; =================================================================
+;;; Copying posts into the tmp space
 
-(defun defblog/posts-prep-fn (properties)
-  ;; TODO
+(defun defblog/posts-prep (cat-list cat-plist-hash tmp-basedir src-basedir)
+  (dolist (cat cat-list)
+    (let ((cat-src-dir (concatenate 'string src-basedir cat "/"))
+	  (cat-tmp-dir (concatenate 'string tmp-basedir "posts/" cat "/")))
+      (when (file-directory-p cat-tmp-dir)
+	(delete-directory cat-tmp-dir t))
+      (make-directory cat-tmp-dir t)
+      (dolist (file (plist-get (gethash (intern cat) cat-plist-hash)
+			       :post-files))
+	(let ((cat-src-file (concatenate 'string cat-src-dir file))
+	      (cat-tmp-file (concatenate 'string cat-tmp-dir file)))
+	  ;; (message "%s %s" cat-src-file cat-tmp-file)
+	  (copy-file cat-src-file cat-tmp-file)
+	  ;; TODO This function into configuration
+	  )))))
+
+;;; =================================================================
+;;; Building indices of posts in the tmp space
+
+(defun defblog/cat-indices-prep (cat-list-getter cat-plist-hash
+				 file-plist-hash tmp-basedir src-basedir)
+  "For the \"-cat-indices\" publish targets, generate category index ORG files.
+These files should be written to the cat-indices subdirectory of the
+temporary files workspace."
+  ;; (message "Called defblog/cat-indices-prep %s" (funcall cat-list-getter))
+  
+  ;; For each category, and for its source and scratch directories,
+  (dolist (cat (funcall cat-list-getter))
+    (let* ((cat-src-dir (concatenate 'string src-basedir cat "/"))
+	   (dest-dir (concatenate 'string tmp-basedir "cat-indices/" cat "/"))
+	   (dest-org (concatenate 'string dest-dir "index.org"))
+
+	   (cat-plist (gethash (intern cat) cat-plist-hash))
+	   (cat-title (plist-get cat-plist :title)))
+      ;; (message "Indexing category %s %s \"%s\"" cat cat-plist cat-title)
+
+      ;; Make sure the destination directory exists, and is empty.
+      ;; (message "Creating directory %s for %s" dest-dir cat-title)
+      (when (file-directory-p dest-dir) (delete-directory dest-dir t))
+      (make-directory dest-dir t)
+
+      ;; Identify the ORG files in the source directory, and retrieve
+      ;; their property lists.
+      (let* ((all-files (directory-files cat-src-dir))
+	     (org-files
+	      (filter #'(lambda (x)
+			  (and (string-match "\\.org$" x)
+			       (not (string-match "/index.org$" x))))
+			  all-files))
+	     ;; (m2 (message "- org-files: %s" org-files))
+      
+	     ;; Create the category's index.org file.
+	     (index-buffer (find-file-noselect dest-org)))
+	;; (message "L1 %s %s" org-files index-buffer)
+	
+	(with-current-buffer index-buffer
+	  (erase-buffer)
+
+	  (insert "#+TITLE: " ; TODO Generalize
+		  cat-title
+		  " [JM's website]\n"
+		  "#+html_head:  <link rel=stylesheet type=\"text/css\" href=\"../style.css\"/>\n\n"); TODO Generalize the style sheet
+
+	  (let* ((full-files (mapcar #'(lambda (x)
+					 (concatenate 'string
+					   cat-src-dir x))
+				     org-files))
+		 (plists (mapcar #'(lambda (x)
+				     (defblog/fetch-file-plist x
+					 file-plist-hash))
+				 full-files))
+		 (sorter #'(lambda (y x) (time-less-p (plist-get x :date)
+						      (plist-get y :date)))))
+	    ;; (message "Iterating through full-files %s\n  plists %s"
+	    ;;	     full-files plists)
+	    (dolist (prop-list (sort plists sorter))
+	      ;; (message "Destructuring %s" prop-list)
+	      (let ((bare  (plist-get prop-list :bare))
+		    (path  (plist-get prop-list :path))
+		    (title (plist-get prop-list :title))
+		    (desc  (plist-get prop-list :desc))
+		    (date  (plist-get prop-list :date))
+		    (updated  (plist-get prop-list :updated)))
+		;; (message "- bare %s title \"%s\" desc \"%s\"" bare title desc)
+		(when bare
+		  (insert "- @@html:<a href=\""
+			  (replace-regexp-in-string "\\.org$" ".html" bare)
+			  "\">"))
+		(insert (cond (title title) (t "(untitled)")))
+		(when bare (insert "</a>@@."))
+		(when desc (insert " " desc))
+		(when date
+		  (insert (format-time-string " /%B %d, %Y/" date)))
+		(when updated
+		  (cond
+		    (date (insert ", /updated "))
+		    (t (insert "/Last updated ")))
+		  (insert (format-time-string "%B %d, %Y/" updated)))
+		(when (or date updated) (insert "."))
+		(insert "\n"))))
+	  (save-buffer 0))))))
+
+(defun defblog/gen-statics-prep (properties tmp-basedir category-tags
+				 file-plist-hash blog-name blog-desc blog-url)
+  "For the \"-gen-statics\" publish targets, generate XML files.
+These files should be written to the gen-statics subdirectory of the
+temporary files workspace.
+- PROPERTIES is as specified in org-publish."
+
+  (defblog/write-rss properties tmp-basedir category-tags
+		     file-plist-hash blog-name blog-desc blog-url)
+  ;; TODO Atom, XML sitemap, ???
   )
 
 ;; TODO --- is this used anymore?  But calls in body might be useful.
@@ -718,33 +848,8 @@ we use as tags of the categories."
   ;; DEFBLOG/PAGES-PREP is called from the first component in the
   ;; ORG-PUBLISH config.
   (defblog/write-post-indices properties tmp-basedir file-plist-hash)
-  (defblog/write-rss properties tmp-basedir category-tags
-		      file-plist-hash blog-name blog-desc blog-url)
   ;; (message "\nEnd defblog/pages-prep")
-  )
-
-(defun defblog/cat-indices-prep (properties)
-  "For the \"-cat-indices\" publish targets, generate category index ORG files.
-These files should be written to the cat-indices subdirectory of the
-temporary files workspace.
-- PROPERTIES is as specified in org-publish."
-  ;; TODO
-  )
-
-(defun defblog/derived-xml-prep (properties)
-  "For the \"-derived-xml\" publish targets, generate XML files.
-These files should be written to the derived-xml subdirectory of the
-temporary files workspace.
-- PROPERTIES is as specified in org-publish."
-  ;; TODO
-  )
-
-(defun defblog/posts-prep (properties)
-  "For the \"-posts\" publish targets, copy post ORG files into the workspace.
-- PROPERTIES is as specified in org-publish."
-  ;; TODO
-  )
-
+  )
 ;;; =================================================================
 ;;; Debugging utilities
 
