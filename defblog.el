@@ -5,9 +5,16 @@
 
 ;;; Code:
 
-(cl-defmacro defblog (name base-directory
-			   blog-title blog-desc blog-url
+(defconst +web-announcement-date+
+  (encode-time (list 20 56 14 6 8 1991 nil nil nil)) ;; August 6, 1991, 14:56:20 GMT
+  "The date when Sir Tim announced the invention of the World-Wide Web.
+Used as an earliest-possible post- or updated-date for pages and posts.")
+
+(cl-defmacro defblog (name base-directory blog-title 
 			   &key
+			   (generate-xml-sitemap t) (generate-rss t)
+			   (generate-atom t)
+			   blog-url blog-desc
 			   (src-subdir "src/") (pub-subdir "pub/")
 			   (gen-subdir "gen/")
 			   css-style-subpath
@@ -37,8 +44,13 @@ the CSS stylesheets for those groups of pages.  If not given, these arguments
 take the value of CSS-STYLE-SUBPATH.  For any of these, a NIL value means there
 should be no CSS style sheet."
 
+  ;; Check fatal combinations of present/missing arguments.
   (unless (file-directory-p base-directory)
     (error "Expected a directory for :base-directory %s" base-directory))
+  (when (or generate-rss generate-atom)
+    (unless blog-url (error "Generating RSS/Atom feed requires BLOG-URL")))
+  
+  ;; Refinements to the given arguments.
   (unless (string-match "/$" base-directory)
     (setf base-directory (concatenate 'string base-directory "/")))
   
@@ -200,9 +212,9 @@ should be no CSS style sheet."
 	     ,tmp-basedir ,src-basedir))
 
        (defun ,gen-statics-prep-fn (properties)
-	 (defblog/gen-statics-prep properties ,tmp-basedir ,category-tags
-				   ,file-plists-hash
-				   ,blog-title ,blog-desc ,blog-url))
+	 (defblog/gen-statics-prep properties ,src-basedir ,tmp-basedir 
+	   ,file-plists-hash ,category-plists-hash
+	   ,category-tags ,blog-title ,blog-desc ,blog-url))
 
        (defun ,posts-prep-fn (properties)
 	 (defblog/posts-prep ,category-tags ,category-plists-hash
@@ -274,9 +286,8 @@ should be no CSS style sheet."
 	     ;; XML files: generate XML files into tmp space, and then
 	     ;; publishing copies over to pub space.
 	     (gen-statics-entry
-	      ;; TODO Make sure ,gen-statics-prep-fn only sets up
-	      ;; files in the tmp space, no caching.
-	      (list :preparation-function ',gen-statics-prep-fn
+	      (list :publishing-function 'org-publish-attachment
+		    :preparation-function ',gen-statics-prep-fn
 		    :base-directory ,gen-statics-basedir
 		    :base-extension "xml"
 		    :publishing-directory ,pub-basedir
@@ -285,13 +296,13 @@ should be no CSS style sheet."
 	     ;; Static files in the source directory that can be
 	     ;; copied over to pub space without translation.
 	     (src-statics-entry
-	      (list :base-directory ,src-basedir
+	      (list :publishing-function 'org-publish-attachment
+		    :base-directory ,src-basedir
 		    :base-extension "html\\|css\\|jpg\\|gif\\|png\\|xml"
 		    :publishing-directory ,pub-basedir
 		    :section-numbers nil
 		    :table-of-contents nil
 		    :with-toc nil
-		    :publishing-function 'org-publish-attachment
 		    :recursive t))
 
 	     ;; Individual posts are copied into tmp/posts (its
@@ -323,9 +334,9 @@ should be no CSS style sheet."
 			     ,(concatenate 'string name "-cat-indices")
 			     ,(concatenate 'string name "-posts")
 			     ,(concatenate 'string name "-src-statics")
-			     ;; ,(concatenate 'string name "-gen-statics")
+			     ,(concatenate 'string name "-gen-statics")
 			     ))))
-	 
+
 	 (setf org-publish-project-alist cleaned-alist)
 	 (push (cons ,(concatenate 'string name "-top-page") top-page-entry)
 	       org-publish-project-alist)
@@ -358,10 +369,12 @@ should be no CSS style sheet."
 information extracted from that file.
 - CAT-LIST-SETTER and CAT-LIST-GETTER are thunks which set (respectively, get) 
 the category list global variable for this blog."
-  (defblog/reset-file-plist-hash src-basedir file-plist-hash)
   (defblog/reset-categories-list src-basedir cat-list-setter)
   (defblog/reset-categories-plist-hash src-basedir
       (funcall cat-list-getter) category-plist-hash)
+  (defblog/reset-file-plist-hash src-basedir file-plist-hash
+    category-plist-hash)
+  (defblog/add-table-summary-data file-plist-hash category-plist-hash)
   ;; TODO --- clear out the published and temporary spaces
   )
 
@@ -373,19 +386,21 @@ the category list global variable for this blog."
     ;; (message "Cached %s --> %s" path result)
     result))
 
-(defun defblog/reset-file-plist-hash (src-basedir file-plist-hash)
-  "Set up the properties hash"
+(defun defblog/reset-file-plist-hash (src-basedir file-plist-hash
+				      category-plist-hash)
+  "Set up the properties hash."
   (clrhash file-plist-hash)
   (let ((top-contents (directory-files src-basedir)))
     (dolist (item top-contents)
       (let ((item-fullpath (concatenate 'string src-basedir item)))
-	(defblog/process-file-for-hash item 0 item-fullpath file-plist-hash))))
+	(defblog/process-file-for-hash item 0 item-fullpath file-plist-hash
+				       category-plist-hash))))
   ;; (message "Finished property hash reset")
   )
 
 (defun defblog/process-file-for-hash (bare-name depth full-path
-				      file-plist-hash)
-  "Recursive function for populating the org properties hash from a given file."
+				      file-plist-hash category-plist-hash)
+  "Recursive function for populating the properties hash from a given file."
   ;; (message "Processing %s" full-path)
   (when (file-directory-p full-path)
       (setf full-path (concatenate 'string full-path "/")))
@@ -398,20 +413,24 @@ the category list global variable for this blog."
        (dolist (dir-item dir-contents)
 	 (let ((dir-item-fullpath (concatenate 'string full-path dir-item)))
 	   (defblog/process-file-for-hash dir-item (+ 1 depth)
-	       dir-item-fullpath file-plist-hash)))))
+	       dir-item-fullpath file-plist-hash category-plist-hash)))))
 
     ;; If it's an ORGMODE file, pull and cache its properties.
     ((string-match "\\.org$" bare-name)
-     (let ((plist (defblog/build-file-plist bare-name full-path depth)))
+     (multiple-value-bind (plist posted-date update-date)
+	 (defblog/build-file-plist bare-name full-path depth)
+       
        ;; (message "- Caching %s --> %s" full-path plist)
-       (puthash (intern full-path) plist file-plist-hash)))
+       (puthash (intern full-path) plist file-plist-hash)
 
     ;; When debugging we may want to know about this fall-through.
     ;; (t (message "- No action for %s" full-path))
-    ))
+    ))))
 
 (defun defblog/build-file-plist (bare-file path depth)
-  "Extract a list of the properties we need from the file at the given PATH.  BARE-FILE and PATH should refer to the same file; the former excludes all surrounding directories."
+  "Extract a list of the properties we need from the file at the given PATH.
+BARE-FILE and PATH should refer to the same file; the former excludes all 
+surrounding directories."
   ;; (message "* Start defblog/build-file-plist %s" path)
   (let ((buf (find-file-noselect path)))
     (with-current-buffer buf
@@ -422,26 +441,27 @@ the category list global variable for this blog."
 			 #'defblog/kwdpair)))
 	  ;; (message "  keyvals %s" keyvals)
 	  (kill-buffer buf)
-	  (let ((result (defblog/format-orgprops-plist bare-file
-			    path depth keyvals)))
+	  (multiple-value-bind (result posted-date update-date)
+	      (defblog/format-orgprops-plist bare-file path depth keyvals)
 	    
 	    ;; (message "  result %s" result)
-	    result))))))
+	    (values result posted-date update-date)))))))
 
 (defun defblog/format-orgprops-plist (bare-file path depth keyvals)
   "Given a key-values list, set up a plist for a file path."
-  (let ((bare-date (assoc "DATE" keyvals))
-	(bare-updated (assoc "UPDATED" keyvals)))
-    (list :bare bare-file :path path
-	  :title (nth 1 (assoc "TITLE" keyvals))
-	  :depth depth
-	  :desc (nth 1 (assoc "DESCRIPTION" keyvals))
-	  :date (cond
-		  (bare-date (date-to-time (nth 1 bare-date)))
-		  (t nil))
-	  :updated (cond
-		     (bare-updated (date-to-time (nth 1 bare-updated)))
-		     (t nil)))))
+  (let* ((bare-date (assoc "DATE" keyvals))
+	 (bare-updated (assoc "UPDATED" keyvals))
+	 (post-date (cond
+		      (bare-date (date-to-time (nth 1 bare-date)))
+		      (t nil)))
+	 (post-updated (cond
+			 (bare-updated (date-to-time (nth 1 bare-updated)))
+			 (t nil))))
+    (values (list :bare bare-file :path path :depth depth
+		  :title (nth 1 (assoc "TITLE" keyvals))
+		  :desc (nth 1 (assoc "DESCRIPTION" keyvals))
+		  :date post-date :updated post-updated)
+	    post-date post-updated)))
 
 (defun defblog/kwdpair (kwd)
   (let ((data (cadr kwd)))
@@ -501,6 +521,7 @@ the category list global variable for this blog."
 	
 	  ;; Form a plist for the category.
 	  (let ((plist `(:tag ,cat-tag
+			      :src-dir ,cat-src-dir
 			      :title ,(nth 1 (assoc "TITLE" keyvals))
 			      :description ,(nth 1 (assoc "DESCRIPTION"
 							  keyvals))
@@ -513,69 +534,106 @@ the category list global variable for this blog."
 	    ))))))
 
 ;;; =================================================================
+;;; Crossreferencing information built into the hashtables.
+
+(defun defblog/add-table-summary-data (file-plist-hash category-plist-hash)
+  "Calculate additional summary information for the plist tables.
+- FILE-PLIST-HASH (respectively CATEGORY-PLIST-HASH) maps absolute pathnames
+(category names) to their property list."
+  
+  )
+
+;;; =================================================================
+;;; Generating non-ORG/HTML files.
+
+(defun defblog/gen-statics-prep (properties src-basedir tmp-basedir
+				 file-plist-hash cat-plist-hash
+				 category-tags blog-name blog-desc blog-url)
+  "Generate XML and other non-ORG/HTML files.
+
+These files should be written to the gen-statics subdirectory of 
+the temporary files workspace.
+- PROPERTIES is as specified in org-publish."
+
+  (defblog/write-rss properties src-basedir tmp-basedir category-tags
+		     file-plist-hash cat-plist-hash
+		     blog-name blog-desc blog-url)
+  
+  ;; TODO Add calls for Atom, XML sitemap, ???
+  )
+
+;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ;;; Writing RSS feeds
 
-(defun defblog/write-rss (properties tmp-basedir
-			   category-tags file-plist-hash
-			   blog-name blog-desc blog-url)
+(defun defblog/write-rss (properties src-basedir tmp-basedir
+			  category-tags file-plist-hash cat-plist-hash
+			  blog-name blog-desc blog-url)
   "Write RSS files for the overall site and for each post category.
 - PROPERTIES are from org-publish.
-- CATEGORY-TAGS and FILE-PLIST-HASH are the internal data structures of the
+- SRC-BASEDIR (respectively TMP-BASEDIR) is the absolute path to the blog
+source (scratch space) directory.
+- CATEGORY-TAGS, FILE-PLIST-HASH and CAT-PLIST-HASH are the internal data
+structures of the blog artifacts.
 - BLOG-NAME, BLOG-DESC and BLOG-URL are strings describing the blog itself."
-  (let* ((pages-basedir (concatenate 'string tmp-basedir "gen-statics/"))
-	 (all-buf (find-file-noselect (concatenate 'string
-					pages-basedir "rss.xml"))))
+  (let ((gen-basedir (concatenate 'string tmp-basedir "gen-statics/")))
+    (when (file-directory-p gen-basedir) (delete-directory gen-basedir t))
+    (make-directory gen-basedir t)
+    
+    (let ((all-buf (find-file-noselect (concatenate 'string 
+					 gen-basedir "rss.xml"))))
     (with-current-buffer all-buf
       (erase-buffer)
       (defblog/write-rss-opening blog-name blog-desc
 	(concatenate 'string blog-url "atom.xml") blog-url 
 	;; TODO --- Calculate this date
 	"Sat, 02 May 2020 22:07:21 +0000"))
-    
-    (dolist (category-tag category-tags)
-      (let* (;; TODO NEXT --- this should retrieve from the stored
-	     ;; category plist :post-files
-	     (posts-subdir (concatenate 'string posts-basedir category-tag))
-	     (post-fullpaths (file-expand-wildcards (concatenate 'string
-						      posts-subdir "/*.org")))
-	     (plists (mapcar #'(lambda (p)
-				 (defblog/fetch-file-plist p file-plist-hash))
-			     post-fullpaths))
-	     (rss-buf (find-file-noselect (concatenate 'string
-					    pages-basedir category-tag
-					    "/rss.xml")))
 
-	     ;; TODO --- fetch the proper category name
+    (dolist (category-tag category-tags)
+      (let* ((cat-src-dir (concatenate 'string src-basedir category-tag "/"))
+	     (post-fullpaths (file-expand-wildcards (concatenate 'string
+						      cat-src-dir "*.org")))
+	     (file-plists (mapcar #'(lambda (p) (defblog/fetch-file-plist p
+						    file-plist-hash))
+				  post-fullpaths))
+	     (cat-properties (gethash (intern category-tag) cat-plist-hash))
+
 	     (cat-rss-title (concatenate 'string
-			      "JM&#8217;s website: " category-tag))
-	     
+			      "JM&#8217;s website: "
+			      (plist-get cat-properties :title)))	      
+	     (cat-desc (plist-get cat-properties :description))	      
 	     (cat-html-url (concatenate 'string
 			     "\"http://maraist.org/" category-tag "/"))
-	     (cat-atom-url (concatenate 'string cat-html-url "atom.xml")))
-	(with-current-buffer rss-buf
-	  (erase-buffer)
-	  (defblog/write-rss-opening cat-rss-title
-				    nil ;; TODO Description here
-				    cat-atom-url cat-html-url
-				    ;; TODO --- Calculate this date
-				    "Sat, 02 May 2020 22:07:21 +0000"))
-	
-	(dolist (plist plists)
-	  ;; TODO Only add things from the last (let's say) five years.
-	  (with-current-buffer all-buf
-	    (defblog/write-rss-for-plist plist category-tag))
-	  (with-current-buffer rss-buf
-	    (defblog/write-rss-for-plist plist category-tag)))
+	     (cat-atom-url (concatenate 'string cat-html-url "atom.xml"))
 
-	(with-current-buffer rss-buf
-	  (defblog/write-rss-closing)
-	  (save-buffer 0)
-	  (kill-buffer rss-buf))))
+	     (cat-out-dir (concatenate 'string gen-basedir category-tag "/")))
+
+	(make-directory cat-out-dir)	
+	(let ((rss-buf (find-file-noselect (concatenate 'string 
+					     cat-out-dir "rss.xml"))))
+
+	  (with-current-buffer rss-buf
+	    (erase-buffer)
+	    (defblog/write-rss-opening cat-rss-title cat-desc
+	      cat-atom-url cat-html-url
+	      ;; TODO --- Calculate this date
+	      "Sat, 02 May 2020 22:07:21 +0000"))
+	
+	  (dolist (plist file-plists)
+	    ;; TODO Only add things from the last (let's say) five years.
+	    (with-current-buffer all-buf
+	      (defblog/write-rss-for-plist plist category-tag))
+	    (with-current-buffer rss-buf
+	      (defblog/write-rss-for-plist plist category-tag)))
+
+	  (with-current-buffer rss-buf
+	    (defblog/write-rss-closing)
+	    (save-buffer 0)
+	    (kill-buffer rss-buf)))))
     
     (with-current-buffer all-buf
       (defblog/write-rss-closing)
       (save-buffer 0)
-      (kill-buffer all-buf))))
+      (kill-buffer all-buf)))))
 
 (defun defblog/write-rss-opening (title description
 				 atom-link html-link lastBuiltDate)
@@ -821,18 +879,6 @@ temporary files workspace."
 		(when (or date updated) (insert "."))
 		(insert "\n"))))
 	  (save-buffer 0))))))
-
-(defun defblog/gen-statics-prep (properties tmp-basedir category-tags
-				 file-plist-hash blog-name blog-desc blog-url)
-  "For the \"-gen-statics\" publish targets, generate XML files.
-These files should be written to the gen-statics subdirectory of the
-temporary files workspace.
-- PROPERTIES is as specified in org-publish."
-
-  (defblog/write-rss properties tmp-basedir category-tags
-		     file-plist-hash blog-name blog-desc blog-url)
-  ;; TODO Atom, XML sitemap, ???
-  )
 
 ;; TODO --- is this used anymore?  But calls in body might be useful.
 (defun defblog/pages-prep (properties tmp-basedir category-tags

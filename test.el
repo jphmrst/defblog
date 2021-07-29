@@ -1,4 +1,6 @@
 (require 'defblog)
 (defblog "maraist" "/home/jm/Writing/maraist-dotorg/"
-  "JM's website" "Occasional notes and observations" "http://maraist.org/")
+  "JM's website"
+  :blog-url "http://maraist.org/"
+  :blog-desc "Occasional notes and observations")
 
