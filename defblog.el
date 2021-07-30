@@ -11,8 +11,6 @@
 ;; and gen-areas, but no *-subdir arguments.  If not defined, then
 ;; these should create a /tmp space.
 ;;
-;; TODO Actually use the generate-* arguments.
-;;
 ;; TODO Actually use the css-* arguments, and suppress having a CSS
 ;; style link when one is NIL.
 ;;
@@ -20,7 +18,8 @@
 
 (cl-defmacro defblog (name base-directory blog-title 
 			   &key
-			   (generate-xml-sitemap t) (generate-rss t)
+			   (generate-xml-sitemap t)
+			   (generate-rss t)
 			   (generate-atom t)
 			   blog-url blog-desc
 			   (src-subdir "src/") (pub-subdir "pub/")
@@ -229,7 +228,8 @@ should be no CSS style sheet."
        (defun ,gen-statics-prep-fn (properties)
 	 (defblog/gen-statics-prep properties ,src-basedir ,tmp-basedir 
 	   ,file-plists-hash ,category-plists-hash
-	   ,category-tags ,blog-title ,blog-desc ,blog-url ,last-blog-update))
+	   ,category-tags ,blog-title ,blog-desc ,blog-url ,last-blog-update
+	   ,generate-xml-sitemap ,generate-rss ,generate-atom))
 
        (defun ,posts-prep-fn (properties)
 	 (defblog/posts-prep ,category-tags ,category-plists-hash
@@ -609,19 +609,26 @@ surrounding directories."
 (defun defblog/gen-statics-prep (properties src-basedir tmp-basedir
 				 file-plist-hash cat-plist-hash
 				 category-tags blog-name blog-desc blog-url
-				 last-update)
+				 last-update generate-xml-sitemap
+				 generate-rss generate-atom)
   "Generate XML and other non-ORG/HTML files.
 
 These files should be written to the gen-statics subdirectory of 
 the temporary files workspace.
 - PROPERTIES is as specified in org-publish."
 
-  (defblog/write-rss properties src-basedir tmp-basedir category-tags
-		     file-plist-hash cat-plist-hash
-		     blog-name blog-desc blog-url last-update)
-  
-  ;; TODO Add calls for Atom, XML sitemap, ???
-  )
+  (when generate-rss
+    (defblog/write-rss properties src-basedir tmp-basedir category-tags
+		       file-plist-hash cat-plist-hash
+		       blog-name blog-desc blog-url last-update))
+
+  (when generate-atom
+    ;; TODO 
+    )
+
+  (when generate-xml-sitemap
+    ;; TODO 
+    ))
 
 ;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ;;; Writing RSS feeds
