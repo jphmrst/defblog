@@ -10,6 +10,19 @@
   "The date when Sir Tim announced the invention of the World-Wide Web.
 Used as an earliest-possible post- or updated-date for pages and posts.")
 
+;; TODO Get it uploading.
+;;
+;; TODO Not base-directory, but source-directory.  Then optional pub-
+;; and gen-areas, but no *-subdir arguments.  If not defined, then
+;; these should create a /tmp space.
+;;
+;; TODO Actually use the generate-* arguments.
+;;
+;; TODO Actually use the css-* arguments, and suppress having a CSS
+;; style link when one is NIL.
+;;
+;; TODO 
+
 (cl-defmacro defblog (name base-directory blog-title 
 			   &key
 			   (generate-xml-sitemap t) (generate-rss t)
