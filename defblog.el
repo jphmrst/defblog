@@ -24,7 +24,10 @@
 			   page-css-style-rel-path
 			   post-css-style-rel-path
 			   category-index-css-style-rel-path
-			   upload rsync-target-host rsync-target-path)
+			   upload
+			   rsync-dest rsync-shell
+			   (rsync-options '("-rLptgoD"))
+			   (rsync-delete-excluded t))
 
   "Declare a simple-structured blog to be published with ORG-PUBLISH.
 
@@ -56,8 +59,11 @@ published blog should include these XML artifacts."
   (unless (file-directory-p base-directory)
     (error "Expected a directory for :base-directory %s" base-directory))
   (when (or generate-rss generate-atom)
-    (unless blog-url (error "Generating RSS/Atom feed requires BLOG-URL")))
-  
+    (unless blog-url
+      (error "Generating RSS/Atom feed requires BLOG-URL"))) 
+  (unless (or (null upload) (eq upload :rsync))
+    (error "Unrecognized value for upload: %s" upload))
+ 
   ;; Refinements to the given arguments.
   (unless (string-match "/$" base-directory)
     (setf base-directory (concatenate 'string base-directory "/")))
@@ -207,6 +213,18 @@ published blog should include these XML artifacts."
 	 )
 
        (defun ,overall-cleanup-fn (properties)
+	 (cond
+	   ((eq ,upload :rsync)
+	    (message "Uploading...")
+	    (call-process "rsync" nil "*org-publish-rsync*" nil
+			  ,@rsync-options
+			  ,@(when rsync-shell
+			      (list (concatenate 'string
+				      "--rsh=" rsync-shell)))
+			  ,@(when rsync-delete-excluded `("--delete-excluded"))
+			  ,(concatenate 'string base-directory pub-subdir)
+			  ,rsync-dest
+	     )))
 	 (message "Cleaning up defblog temp structures")
 	 (clrhash ,file-plists-hash)
 	 (clrhash ,category-plists-hash)
