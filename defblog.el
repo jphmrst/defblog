@@ -5,11 +5,6 @@
 
 ;;; Code:
 
-(defconst +web-announcement-date+
-  (encode-time (list 20 56 14 6 8 1991 nil nil nil)) ;; August 6, 1991, 14:56:20 GMT
-  "The date when Sir Tim announced the invention of the World-Wide Web.
-Used as an earliest-possible post- or updated-date for pages and posts.")
-
 ;; TODO Get it uploading.
 ;;
 ;; TODO Not base-directory, but source-directory.  Then optional pub-
@@ -892,6 +887,11 @@ temporary files workspace."
     ((null xs) nil)
     ((funcall f (car xs)) (cons (car xs) (filter f (cdr xs))))
     (t (filter f (cdr xs)))))
+
+(defconst +web-announcement-date+
+  (encode-time (list 20 56 14 6 8 1991 nil nil nil)) ;; August 6, 1991, 14:56:20 GMT
+  "The date when Sir Tim announced the invention of the World-Wide Web.
+Used as an earliest-possible post- or updated-date for pages and posts.")
 
 (provide 'defblog)
 ;;; defblog ends here
