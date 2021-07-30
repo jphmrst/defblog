@@ -90,12 +90,6 @@ should be no CSS style sheet."
 				       "+defblog/" name "/cat-indices+")))
 	(gen-statics-basedir (intern (concatenate 'string
 				       "+defblog/" name "/gen-statics+")))
-	(lv1-preamble-plist (intern (concatenate 'string
-				      "+defblog/" name
-				      "/lv1-preamble-plist+")))
-	(lv2-preamble-plist (intern (concatenate 'string
-				      "+defblog/" name
-				      "/lv2-preamble-plist+")))
 	(last-blog-update (intern (concatenate 'string
 				      "+defblog/" name "/last-blog-update+")))
 
@@ -181,16 +175,6 @@ should be no CSS style sheet."
 	    "Scratch space area for generating XML files for the "
 	    name " blog."))
 
-       (when (boundp ',lv1-preamble-plist) (makunbound ',lv1-preamble-plist))
-       (defvar ,lv1-preamble-plist
-	   '(:html-preamble
-	     "<link rel=stylesheet type=\"text/css\" href=\"./style.css\"/>"))
-
-       (when (boundp ',lv2-preamble-plist) (makunbound ',lv2-preamble-plist))
-       (defvar ,lv2-preamble-plist
-	   '(:html-preamble
-	     "<link rel=stylesheet type=\"text/css\" href=\"../style.css\"/>"))
-       
        (when (boundp ',last-blog-update) (makunbound ',last-blog-update))
        (defvar ,last-blog-update nil
 	 "Last post or update to this blog")
@@ -267,7 +251,8 @@ should be no CSS style sheet."
 		     :recursive nil
 		     :html-postamble nil
 		     
-		     ,lv1-preamble-plist))
+		     :html-preamble
+		     "<link rel=stylesheet type=\"text/css\" href=\"./style.css\"/>"))
 
 	     ;; Other (top-level) non-index pages: right now, convert
 	     ;; straight from the source directory to the pub area.
@@ -283,7 +268,8 @@ should be no CSS style sheet."
 		     "<a href=\"./\">Back to the top</a>."
 		     :recursive nil
 		     	     
-		     ,lv1-preamble-plist))
+		     :html-preamble
+		     "<link rel=stylesheet type=\"text/css\" href=\"./style.css\"/>"))
 
 	     ;; Category indices: generate ORG files into tmp space,
 	     ;; and then convert.
@@ -296,7 +282,8 @@ should be no CSS style sheet."
 		     "<a href=\"../\">Back to the top</a>."
 		     :recursive t
 		     
-		     ,lv2-preamble-plist))
+		     :html-preamble
+		     "<link rel=stylesheet type=\"text/css\" href=\"../style.css\"/>"))
 
 	     ;; XML files: generate XML files into tmp space, and then
 	     ;; publishing copies over to pub space.
@@ -335,7 +322,8 @@ should be no CSS style sheet."
 		     :table-of-contents nil
 		     :with-toc nil
 		     
-		    ,lv2-preamble-plist))
+		    :html-preamble
+		    "<link rel=stylesheet type=\"text/css\" href=\"../style.css\"/>"))
 
 	     (overall-target
 	      '(:completion-function ,overall-cleanup-fn
