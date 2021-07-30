@@ -9,12 +9,7 @@
 ;;
 ;; TODO Not base-directory, but source-directory.  Then optional pub-
 ;; and gen-areas, but no *-subdir arguments.  If not defined, then
-;; these should create a /tmp space.
-;;
-;; TODO Actually use the css-* arguments, and suppress having a CSS
-;; style link when one is NIL.
-;;
-;; TODO 
+;; these should create a /tmp space. 
 
 (cl-defmacro defblog (name base-directory blog-title 
 			   &key
@@ -24,12 +19,12 @@
 			   blog-url blog-desc
 			   (src-subdir "src/") (pub-subdir "pub/")
 			   (gen-subdir "gen/")
-			   css-style-subpath
-			   (frontpage-css-style-subpath css-style-subpath)
-			   (page-css-style-subpath css-style-subpath)
-			   (post-css-style-subpath css-style-subpath)
-			   (category-index-css-style-subpath
-			    css-style-subpath))
+			   css-style-rel-path
+			   frontpage-css-style-rel-path
+			   page-css-style-rel-path
+			   post-css-style-rel-path
+			   category-index-css-style-rel-path)
+
   "Declare a simple-structured blog to be published with ORG-PUBLISH.
 
 Required parameters:
@@ -38,18 +33,23 @@ with the names used for other blogs.
 - BASE-DIRECTORY, a string giving the absolute pathname of the directory
 containing the source directory, scratch work space, and HTML output directory
 for this blog.
+- BLOG-TITLE, a string with the human-oriented name for this web site.
 
 Optional parameters:
+- BLOG-URL gives the URL for the top of this blog.  This value is required
+if generating most of the XML artifacts.
 - SRC-SUBDIR, PUB-SUBDIR and GEN-SUBDIR are the local paths from BASE-DIRECTORY
 to the respective subdirectories for the blog source, the HTML-output
 \(\"published\") area, and the temporary scratch workspace.
 - CSS-STYLE-SUBPATH, the local path from the BASE-DIRECTORY to default CSS
 stylesheet for the blog.
-- FRONTPAGE-CSS-STYLE-SUBPATH, PAGE-CSS-STYLE-SUBPATH, POST-CSS-STYLE-SUBPATH
-and CATEGORY-INDEX-CSS-STYLE-SUBPATH are local paths from the BASE-DIRECTORY to
-the CSS stylesheets for those groups of pages.  If not given, these arguments
-take the value of CSS-STYLE-SUBPATH.  For any of these, a NIL value means there
-should be no CSS style sheet."
+- FRONTPAGE-CSS-STYLE-REL-PATH, PAGE-CSS-STYLE-REL-PATH, 
+POST-CSS-STYLE-REL-PATH and CATEGORY-INDEX-CSS-STYLE-REL-PATH are local paths
+from the BASE-DIRECTORY to the CSS stylesheets for those groups of pages.  If
+not given, these arguments take the value of CSS-STYLE-REL-PATH.  For any of 
+these, a NIL value means there should be no CSS style sheet.
+- GENERATE-XML-SITEMAP, GENERATE-RSS and GENERATE-ATOM indicate whether the
+published blog should include these XML artifacts."
 
   ;; Check fatal combinations of present/missing arguments.
   (unless (file-directory-p base-directory)
@@ -60,6 +60,17 @@ should be no CSS style sheet."
   ;; Refinements to the given arguments.
   (unless (string-match "/$" base-directory)
     (setf base-directory (concatenate 'string base-directory "/")))
+
+  (unless frontpage-css-style-rel-path
+    (setf frontpage-css-style-rel-path css-style-rel-path))
+  (unless page-css-style-rel-path
+    (setf page-css-style-rel-path css-style-rel-path))
+  (unless post-css-style-rel-path
+    (setf post-css-style-rel-path (concatenate 'string
+				    "../" css-style-rel-path)))
+  (unless category-index-css-style-rel-path
+    (setf category-index-css-style-rel-path (concatenate 'string
+					      "../" css-style-rel-path)))
   
   (let (;; The stateful structures associated with this blog, to be
 	;; updated before each time the blog HTML is built.  Each of
@@ -240,19 +251,23 @@ should be no CSS style sheet."
 	     ;; directory to the pub directory --- this file only, no
 	     ;; need to copy it anywhere.
 	     (top-page-entry
-	      (list* :preparation-function ',overall-setup-fn
-		     :base-directory ,src-basedir
-		     :publishing-directory ,pub-basedir
-		     :publishing-function 'org-html-publish-to-html
-		     :section-numbers nil
-		     :table-of-contents nil
-		     :with-toc nil
-		     :exclude ".*" :include '("index.org")
-		     :recursive nil
-		     :html-postamble nil
-		     
-		     :html-preamble
-		     "<link rel=stylesheet type=\"text/css\" href=\"./style.css\"/>"))
+	      (list :preparation-function ',overall-setup-fn
+		    :base-directory ,src-basedir
+		    :publishing-directory ,pub-basedir
+		    :publishing-function 'org-html-publish-to-html
+		    :section-numbers nil
+		    :table-of-contents nil
+		    :with-toc nil
+		    :exclude ".*" :include '("index.org")
+		    :recursive nil
+		    :html-postamble nil
+		    
+		    ,@(when frontpage-css-style-rel-path
+			`(:html-preamble
+			  ,(concatenate 'string
+			     "<link rel=stylesheet type=\"text/css\" href=\""
+			     frontpage-css-style-rel-path
+			     "\" />")))))
 
 	     ;; Other (top-level) non-index pages: right now, convert
 	     ;; straight from the source directory to the pub area.
@@ -260,30 +275,38 @@ should be no CSS style sheet."
 	     ;; But maybe these should really be copied with
 	     ;; header/footer org-text into scratch area?
 	     (pages-entry
-	      (list* :publishing-function 'org-html-publish-to-html
-		     :base-directory ,src-basedir
-		     :publishing-directory ,pub-basedir
-		     :exclude "index.org"
-		     :html-postamble
-		     "<a href=\"./\">Back to the top</a>."
-		     :recursive nil
-		     	     
-		     :html-preamble
-		     "<link rel=stylesheet type=\"text/css\" href=\"./style.css\"/>"))
+	      (list :publishing-function 'org-html-publish-to-html
+		    :base-directory ,src-basedir
+		    :publishing-directory ,pub-basedir
+		    :exclude "index.org"
+		    :html-postamble
+		    "<a href=\"./\">Back to the top</a>."
+		    :recursive nil
+		    
+		    ,@(when page-css-style-rel-path
+			`(:html-preamble
+			  ,(concatenate 'string
+			     "<link rel=stylesheet type=\"text/css\" href=\""
+			     page-css-style-rel-path
+			     "\" />")))))
 
 	     ;; Category indices: generate ORG files into tmp space,
 	     ;; and then convert.
 	     (cat-indices-entry
-	      (list* :preparation-function ',cat-indices-prep-fn
-		     :publishing-function 'org-html-publish-to-html
-		     :base-directory ,cat-indices-basedir
-		     :publishing-directory ,pub-basedir
-		     :html-postamble
-		     "<a href=\"../\">Back to the top</a>."
-		     :recursive t
-		     
-		     :html-preamble
-		     "<link rel=stylesheet type=\"text/css\" href=\"../style.css\"/>"))
+	      (list :preparation-function ',cat-indices-prep-fn
+		    :publishing-function 'org-html-publish-to-html
+		    :base-directory ,cat-indices-basedir
+		    :publishing-directory ,pub-basedir
+		    :html-postamble
+		    "<a href=\"../\">Back to the top</a>."
+		    :recursive t
+		    
+		    ,@(when category-index-css-style-rel-path
+			`(:html-preamble
+			  ,(concatenate 'string
+			     "<link rel=stylesheet type=\"text/css\" href=\""
+			     category-index-css-style-rel-path
+			     "\" />")))))
 
 	     ;; XML files: generate XML files into tmp space, and then
 	     ;; publishing copies over to pub space.
@@ -311,19 +334,22 @@ should be no CSS style sheet."
 	     ;; subdirectories created as well), and converted from
 	     ;; there.
 	     (posts-entry
-	      (list* :preparation-function ',posts-prep-fn
-		     :base-directory ,posts-basedir
-		     :publishing-directory ,pub-basedir
-		     :html-preamble "<style type=\"text/css\"> .title { text-align: left; } </style> <link rel=stylesheet type=\"text/css\" href=\"../style.css\"/>"
-		     :html-postamble "<a href=\"../\">Back to the top</a>, or <a href=\"./\">more like this</a>."
-		     :recursive t
-		     :publishing-function 'org-html-publish-to-html
-		     :section-numbers nil
-		     :table-of-contents nil
-		     :with-toc nil
-		     
-		    :html-preamble
-		    "<link rel=stylesheet type=\"text/css\" href=\"../style.css\"/>"))
+	      (list :preparation-function ',posts-prep-fn
+		    :base-directory ,posts-basedir
+		    :publishing-directory ,pub-basedir
+		    :html-postamble "<a href=\"../\">Back to the top</a>, or <a href=\"./\">more like this</a>."
+		    :recursive t
+		    :publishing-function 'org-html-publish-to-html
+		    :section-numbers nil
+		    :table-of-contents nil
+		    :with-toc nil
+		    
+		    ,@(when post-css-style-rel-path
+			`(:html-preamble
+			  ,(concatenate 'string
+			     "<link rel=stylesheet type=\"text/css\" href=\""
+			     post-css-style-rel-path
+			     "\" />")))))
 
 	     (overall-target
 	      '(:completion-function ,overall-cleanup-fn
