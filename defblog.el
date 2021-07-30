@@ -23,7 +23,8 @@
 			   frontpage-css-style-rel-path
 			   page-css-style-rel-path
 			   post-css-style-rel-path
-			   category-index-css-style-rel-path)
+			   category-index-css-style-rel-path
+			   upload rsync-target-host rsync-target-path)
 
   "Declare a simple-structured blog to be published with ORG-PUBLISH.
 
@@ -309,10 +310,13 @@ published blog should include these XML artifacts."
 			     "\" />")))))
 
 	     ;; XML files: generate XML files into tmp space, and then
-	     ;; publishing copies over to pub space.
+	     ;; publishing copies over to pub space.  Note that this
+	     ;; target contains the OVERALL-CLEANUP-FN, and so it
+	     ;; should be invoked last.
 	     (gen-statics-entry
 	      (list :publishing-function 'org-publish-attachment
 		    :preparation-function ',gen-statics-prep-fn
+		    :completion-function ',overall-cleanup-fn
 		    :base-directory ,gen-statics-basedir
 		    :base-extension "xml"
 		    :publishing-directory ,pub-basedir
@@ -352,8 +356,7 @@ published blog should include these XML artifacts."
 			     "\" />")))))
 
 	     (overall-target
-	      '(:completion-function ,overall-cleanup-fn
-		:components (;; Do *-top-page first; it has the side
+	      '(:components (;; Do *-top-page first; it has the side
 			     ;; effect of updating the properties
 			     ;; hashtable.
 			     ,(concatenate 'string name "-top-page")
@@ -361,6 +364,11 @@ published blog should include these XML artifacts."
 			     ,(concatenate 'string name "-cat-indices")
 			     ,(concatenate 'string name "-posts")
 			     ,(concatenate 'string name "-src-statics")
+			     ;; Do *-gen-statics last; it has the side
+			     ;; effect of calling the OVERALL-CLEANUP
+			     ;; function (to discard temporary
+			     ;; structures and directories) after it
+			     ;; publishes.
 			     ,(concatenate 'string name "-gen-statics")
 			     ))))
 
