@@ -797,7 +797,7 @@ structures of the blog artifacts.
     (with-current-buffer all-buf
       (erase-buffer)
       (defblog/write-rss-opening blog-name blog-desc
-	(concatenate 'string blog-url "atom.xml") blog-url blog-last-mod))
+	(concatenate 'string blog-url "rss.xml") blog-url blog-last-mod))
 
     (dolist (category-tag category-tags)
       (let* ((cat-src-dir (concatenate 'string source-directory category-tag "/"))
@@ -813,7 +813,7 @@ structures of the blog artifacts.
 	     (cat-desc (plist-get cat-properties :description))	      
 	     (cat-last-mod-date (plist-get cat-properties :latest-mod))
 	     (cat-html-url (concatenate 'string blog-url category-tag "/"))
-	     (cat-atom-url (concatenate 'string cat-html-url "atom.xml"))
+	     (cat-atom-url (concatenate 'string cat-html-url "rss.xml"))
 
 	     (cat-out-dir (concatenate 'string gen-basedir category-tag "/")))
 
@@ -844,7 +844,7 @@ structures of the blog artifacts.
       (kill-buffer all-buf)))))
 
 (defun defblog/write-rss-opening (title description
-				 atom-link html-link last-built-date)
+				 rss-link html-link last-built-date)
   (insert "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
   (insert "<rss version=\"2.0\"\n")
   (insert "     xmlns:content=\"http://purl.org/rss/1.0/modules/content/\"\n")
@@ -855,7 +855,7 @@ structures of the blog artifacts.
   (insert "     xmlns:slash=\"http://purl.org/rss/1.0/modules/slash/\">\n")
   (insert "  <channel>\n")
   (insert "    <title>" title "</title>\n")
-  (insert "    <atom:link href=\" atom-link \"\n")
+  (insert "    <atom:link href=\"" rss-link "\"\n")
   (insert "               rel=\"self\"\n")
   (insert "               type=\"application/rss+xml\" />\n")
   (insert "    <link>" html-link "</link>\n")
@@ -872,20 +872,22 @@ structures of the blog artifacts.
   (insert "  </channel>\n</rss>\n"))
 
 (defun defblog/write-rss-for-plist (plist category-properties)
-  (let ((title (plist-get plist :title))
-	(bare  (plist-get plist :bare))
-	(date  (plist-get plist :date))
-	(desc  (plist-get plist :desc)))
+  (let* ((title (plist-get plist :title))
+	 (bare  (plist-get plist :bare))
+	 (date  (plist-get plist :date))
+	 (desc  (plist-get plist :desc))
+	 (this-link (concatenate 'string
+		      "https://maraist.org/"
+		      (plist-get category-properties :tag) "/"
+		      (replace-regexp-in-string "\\.org$" ".html" bare))))
     (insert "\n    <item>\n")
     (insert "      <title>" (cond (title title) (t "(untitled)")) "</title>\n")
-    (insert "      <link>https://maraist.org/"
-	    (plist-get category-properties :tag) "/"
-	    (replace-regexp-in-string "\\.org$" ".html" bare)
-	    "</link>\n")
+    (insert "      <link>" this-link "</link>\n")
+    (insert "      <guid>" this-link "</guid>\n")
     (insert "      <dc:creator><![CDATA[jm]]></dc:creator>\n")
     (insert "      <pubDate>"
 	    (cond
-	      (date (format-time-string "%a, %d %B %Y %H:%M:%S" date))
+	      (date (format-time-string "%a, %d %b %Y %H:%M:%S" date))
 	      (t "Fri, 08 Jan 2005 12:00:00"))
 	    " +0000</pubDate>\n")
     (insert "      <category><![CDATA["
