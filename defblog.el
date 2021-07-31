@@ -9,11 +9,17 @@
 ;; and gen-areas, but no *-subdir arguments.  If not defined, then
 ;; these should create a /tmp space.
 ;;
-;; TODO Debug RSS
+;; TODO XML sitemap entry for root page.
 ;;
-;; TODO Add Atom
+;; TODO Into file plists from Org properties: :change-freq,
+;; :sitemap-priority.
 ;;
-;; TODO Add XML Sitemap
+;; TODO Into category plists from Org properties: :change-freq,
+;; :sitemap-priority.
+;;
+;; TODO Global blog defaults for XML sitemap change-freq, priority:
+;; parameters/defaults, and into calls to
+;; defblog/write-xml-sitemap-entry from defblog/write-xml-sitemap.
 ;;
 ;; TODO Centralize creating/emptying the published and temporary
 ;; spaces
@@ -32,12 +38,14 @@
 ;; DEFBLOG/CAT-INDICES-PREP.
 ;;
 ;; TODO Ignore index.org source files in the category directories.
+;;
+;; TODO Change AUTHOR-NAME to DEFAULT-AUTHOR-NAME; add AUTHOR-NAME
+;; property to post plists.
+;;
+;; TODO Add blog-default page sitemap change frequency, priority.
 
 (cl-defmacro defblog (name base-directory blog-title 
 			   &key
-			   (generate-xml-sitemap t)
-			   (generate-rss t)
-			   (generate-atom t)
 			   blog-url blog-desc
 			   (src-subdir "src/") ;; To go away
 			   (pub-subdir "pub/") ;; To go away
@@ -64,7 +72,12 @@
 			   ;;
 			   rsync-dest rsync-shell
 			   (rsync-options '("-rLptgoD"))
-			   (rsync-delete-excluded t))
+			   (rsync-delete-excluded t)
+			   ;;
+			   (generate-xml-sitemap t)
+			   (generate-rss t)
+			   (generate-atom t)
+			   author-name)
 
   "Declare a simple-structured blog to be published with ORG-PUBLISH.
 
@@ -101,7 +114,8 @@ directory layout is:
   /DIR/TO/SRC/kittens/category.txt   Properties describing the \"kittens\" 
                                      category.
   /DIR/TO/SRC/kittens/adopted.org    A post about adopting a kitten
-  /DIR/TO/SRC/kittens/vet-jul20.org  A post about a trip to the vet in July 2020.
+  /DIR/TO/SRC/kittens/vet-jul20.org  A post about a trip to the vet 
+                                     in July 2020.
 
 DEFBLOG will also use the TITLE and DESCRIPTION properties of
 category.txt files.
@@ -118,20 +132,25 @@ and HTML output directory for this blog.
 site.
 
 Optional parameters:
-- BLOG-URL gives the URL for the top of this blog.  This value is required
-if generating most of the XML artifacts.
-- SRC-SUBDIR, PUB-SUBDIR and GEN-SUBDIR are the local paths from BASE-DIRECTORY
-to the respective subdirectories for the blog source, the HTML-output
-\(\"published\") area, and the temporary scratch workspace.
-- CSS-STYLE-SUBPATH, the local path from the BASE-DIRECTORY to default CSS
-stylesheet for the blog.
-- FRONTPAGE-CSS-STYLE-REL-PATH, PAGE-CSS-STYLE-REL-PATH, 
-POST-CSS-STYLE-REL-PATH and CATEGORY-INDEX-CSS-STYLE-REL-PATH are local paths
-from the BASE-DIRECTORY to the CSS stylesheets for those groups of pages.  If
-not given, these arguments take the value of CSS-STYLE-REL-PATH.  For any of 
-these, a NIL value means there should be no CSS style sheet.
-- GENERATE-XML-SITEMAP, GENERATE-RSS and GENERATE-ATOM indicate whether the
-published blog should include these XML artifacts."
+- BLOG-URL gives the URL for the top of this blog.  This value is
+required if generating most of the XML artifacts.
+- SRC-SUBDIR, PUB-SUBDIR and GEN-SUBDIR are the local paths from
+BASE-DIRECTORY to the respective subdirectories for the blog
+source, the HTML-output (\"published\") area, and the temporary
+scratch workspace.
+- CSS-STYLE-SUBPATH, the local path from the BASE-DIRECTORY to 
+default CSS stylesheet for the blog.
+- FRONTPAGE-CSS-STYLE-REL-PATH, PAGE-CSS-STYLE-REL-PATH,
+POST-CSS-STYLE-REL-PATH and CATEGORY-INDEX-CSS-STYLE-REL-PATH are
+local paths from the BASE-DIRECTORY to the CSS stylesheets for
+those groups of pages.  If not given, these arguments take the
+value of CSS-STYLE-REL-PATH.  For any of these, a NIL value means
+there should be no CSS style sheet.
+- GENERATE-XML-SITEMAP, GENERATE-RSS and GENERATE-ATOM indicate
+whether the published blog should include these XML artifacts.
+The RSS and Atom feeds are validated via
+https://validator.w3.org/feed/ .  The XML sitemap is validated via
+https://www.xml-sitemaps.com/validate-xml-sitemap.html ."
 
   ;; Check fatal combinations of present/missing arguments.
   (unless (file-directory-p base-directory)
@@ -139,6 +158,9 @@ published blog should include these XML artifacts."
   (when (or generate-rss generate-atom)
     (unless blog-url
       (error "Generating RSS/Atom feed requires BLOG-URL"))) 
+  (when generate-atom
+    (unless author-name
+      (error "Generating Atom feed requires AUTHOR-NAME")))
   (unless (or (null upload) (eq upload :rsync))
     (error "Unrecognized value for upload: %s" upload))
  
@@ -246,29 +268,37 @@ published blog should include these XML artifacts."
 	 (makunbound ',use-system-tmpspace-var))
        (defvar ,use-system-tmpspace-var ,(or (null published-directory)
 					     (null generated-directory))
-	 ,(concatenate 'string "Flag specifying whether we need a system tmp directory for the " name " blog."))
+	 ,(concatenate 'string
+	    "Flag specifying whether we need a system tmp directory for the "
+	    name " blog."))
 
        (when (boundp ',system-tmpspace-var)
 	 (makunbound ',system-tmpspace-var))
        (defvar ,system-tmpspace-var nil
-	 ,(concatenate 'string "Set to the in-use system tmp directory for the " name " blog."))
+	 ,(concatenate 'string
+	    "Set to the in-use system tmp directory for the " name " blog."))
 
        (when (boundp ',source-directory-var) (makunbound ',source-directory-var))
-       (defvar ,source-directory-var ,(concatenate 'string base-directory src-subdir)
+       (defvar ,source-directory-var
+	   ,(concatenate 'string base-directory src-subdir)
 	 ,(concatenate 'string
 	    "Directory with the source ORG files of the " name " blog."))
        
-       (when (boundp ',publish-directory-var) (makunbound ',publish-directory-var))
-       (defvar ,publish-directory-var ,(concatenate 'string base-directory pub-subdir)
+       (when (boundp ',publish-directory-var)
+	 (makunbound ',publish-directory-var))
+       (defvar ,publish-directory-var
+	   ,(concatenate 'string base-directory pub-subdir)
 	 ,(concatenate 'string
 	    "Target directory for publishable files of the " name " blog."))
        
        (when (boundp ',gen-directory-var) (makunbound ',gen-directory-var))
-       (defvar ,gen-directory-var ,(concatenate 'string base-directory gen-subdir)
+       (defvar ,gen-directory-var
+	   ,(concatenate 'string base-directory gen-subdir)
 	 ,(concatenate 'string
 	    "Scratch space directory for the " name " blog."))
        
-       (when (boundp ',get-posts-directory-var) (makunbound ',get-posts-directory-var))
+       (when (boundp ',get-posts-directory-var)
+	 (makunbound ',get-posts-directory-var))
        (defvar ,get-posts-directory-var
 	   ,(concatenate 'string base-directory gen-subdir "posts/")
 	 ,(concatenate 'string
@@ -298,7 +328,7 @@ published blog should include these XML artifacts."
        ;; this macro expansion.
 
        (defun ,overall-setup-fn (properties)
-	 (message "--------------------\nSetting up defblog temp structures")
+	 (message "Setting up defblog temp structures")
 
 	 (when ,use-system-tmpspace-var
 	   (setf ,system-tmpspace-var (make-temp-file "defblog" t))
@@ -330,7 +360,7 @@ published blog should include these XML artifacts."
 	 (clrhash ,category-plists-hash)
 	 (setf ,category-tags nil)
 	 (when ,use-system-tmpspace-var
-	   (delete-directory ,system-tmpspace-var)))
+	   (delete-directory ,system-tmpspace-var t)))
 
        (defun ,state-dump-fn ()
 	 (defblog/state-dump ,file-plists-hash
@@ -345,7 +375,8 @@ published blog should include these XML artifacts."
 	 (defblog/gen-statics-prep properties ,source-directory-var ,gen-directory-var 
 	   ,file-plists-hash ,category-plists-hash
 	   ,category-tags ,blog-title ,blog-desc ,blog-url ,last-blog-update
-	   ,generate-xml-sitemap ,generate-rss ,generate-atom))
+	   ,generate-xml-sitemap ,generate-rss ,generate-atom
+	   ,author-name))
 
        (defun ,posts-prep-fn (properties)
 	 (defblog/posts-prep ,category-tags ,category-plists-hash
@@ -755,25 +786,129 @@ surrounding directories."
 				 file-plist-hash cat-plist-hash
 				 category-tags blog-name blog-desc blog-url
 				 last-update generate-xml-sitemap
-				 generate-rss generate-atom)
+				 generate-rss generate-atom author-name)
   "Generate XML and other non-ORG/HTML files.
 
 These files should be written to the gen-statics subdirectory of 
 the temporary files workspace.
 - PROPERTIES is as specified in org-publish."
 
+  (let ((gen-basedir (concatenate 'string gen-directory "gen-statics/")))
+    (when (file-directory-p gen-basedir) (delete-directory gen-basedir t))
+    (make-directory gen-basedir t))
+  
   (when generate-rss
     (defblog/write-rss properties source-directory gen-directory category-tags
 		       file-plist-hash cat-plist-hash
 		       blog-name blog-desc blog-url last-update))
 
   (when generate-atom
-    ;; TODO 
-    )
+    (defblog/write-atom properties source-directory gen-directory category-tags
+			file-plist-hash cat-plist-hash
+			blog-name blog-desc blog-url last-update author-name))
 
   (when generate-xml-sitemap
-    ;; TODO 
-    ))
+    (defblog/write-xml-sitemap properties gen-directory blog-url
+      file-plist-hash cat-plist-hash)))
+
+;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+;;; Generating the XML sitemap
+
+(defun defblog/write-xml-sitemap (properties gen-directory site-url
+				  file-plist-hash cat-plist-hash)
+  "Generate an XML sitemap for a blog.
+- PROPERTIES are from org-publish.
+- GEN-DIRECTORY is the absolute path to the scratch space directory.
+- CATEGORY-TAGS, FILE-PLIST-HASH and CAT-PLIST-HASH are the internal data
+structures of the blog artifacts."
+
+  (message "Generating XML sitemap")
+  (let ((gen-basedir (concatenate 'string gen-directory "gen-statics/")))    
+    (let ((sitemap-buf (find-file-noselect (concatenate 'string 
+					     gen-basedir "sitemap.xml"))))
+      (with-current-buffer sitemap-buf
+	(erase-buffer)
+	(insert
+	 "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+	 "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n")
+
+	(dolist (file-plist (hash-table-values file-plist-hash))
+	  (when (zerop (plist-get file-plist :depth))
+	    (let* ((page-url
+		    (replace-regexp-in-string "\\.org$" ".html"
+					      (concatenate 'string
+						site-url
+						(plist-get file-plist :bare)))))
+	      (defblog/write-xml-sitemap-url page-url
+		  (plist-get file-plist :date) (plist-get file-plist :updated)
+		  (plist-get file-plist :change-freq) nil nil
+		  (plist-get file-plist :priority) nil nil))))
+	(dolist (cat-plist (hash-table-values cat-plist-hash))
+	  (let ((cat-tag (plist-get cat-plist :tag)))
+	    (defblog/write-xml-sitemap-entry
+		(concatenate 'string site-url cat-tag "/")
+		(plist-get cat-plist :latest-post) nil
+		nil (plist-get cat-plist :change-freq) nil
+		nil (plist-get cat-plist :sitemap-priority) nil)
+	  
+	    (dolist (file (plist-get cat-plist :post-files))
+	      (message "File %s" file)
+	      (let* ((file-fullpath (concatenate 'string
+				      (plist-get cat-plist :src-dir) file))
+		     (file-plist (gethash (intern file-fullpath)
+					  file-plist-hash)))
+		(message "     plist %s" file-plist)
+		(let* ((base-file-src (plist-get file-plist :bare))
+		       (page-url
+			(concatenate 'string
+			  site-url cat-tag "/"
+			  (replace-regexp-in-string "\\.org$" ".html"
+						    base-file-src))))
+		  (defblog/write-xml-sitemap-entry page-url
+		      (plist-get file-plist :date)
+		    (plist-get file-plist :updated)
+		    (plist-get file-plist :change-freq)
+		    (plist-get cat-plist :change-freq)
+		    nil
+		    (plist-get file-plist :sitemap-priority)
+		    (plist-get cat-plist :sitemap-priority)
+		    nil))))))
+	(insert "</urlset>\n")
+	(save-buffer 0))
+      (kill-buffer sitemap-buf))))
+
+(defun defblog/write-xml-sitemap-entry (page-url post-time update-time
+					page-change-freq
+					group-default-change-freq
+					blog-default-change-freq
+					page-priority
+					group-default-priority
+					blog-default-priority)
+  (let* ((mod-time (cond
+		     ((null post-time) update-time)
+		     ((null update-time) post-time)
+		     ((time-less-p post-time update-time) update-time)
+		     (t post-time))))
+    (insert "  <url>\n"
+	    "    <loc>" page-url "</loc>\n"
+	    "    <lastmod>" (format-time-string +rfc-3339-time-format+ mod-time)
+	    "</lastmod>\n"
+	    "    <changefreq>"
+	    (cond
+	      (page-change-freq page-change-freq)
+	      (group-default-change-freq group-default-change-freq)
+	      (blog-default-change-freq blog-default-change-freq)
+	      (t "yearly"))
+	    "</changefreq>\n"
+	    "    <priority>"
+	    (cond
+	      (page-priority page-priority)
+	      (group-default-priority group-default-priority)
+	      (blog-default-priority blog-default-priority)
+	      (t "0.5"))
+	    "</priority>\n"
+	    "  </url>\n")))
+
 
 ;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ;;; Writing RSS feeds
@@ -788,10 +923,7 @@ source (scratch space) directory.
 - CATEGORY-TAGS, FILE-PLIST-HASH and CAT-PLIST-HASH are the internal data
 structures of the blog artifacts.
 - BLOG-NAME, BLOG-DESC and BLOG-URL are strings describing the blog itself."
-  (let ((gen-basedir (concatenate 'string gen-directory "gen-statics/")))
-    (when (file-directory-p gen-basedir) (delete-directory gen-basedir t))
-    (make-directory gen-basedir t)
-    
+  (let ((gen-basedir (concatenate 'string gen-directory "gen-statics/")))    
     (let ((all-buf (find-file-noselect (concatenate 'string 
 					 gen-basedir "rss.xml"))))
     (with-current-buffer all-buf
@@ -817,7 +949,8 @@ structures of the blog artifacts.
 
 	     (cat-out-dir (concatenate 'string gen-basedir category-tag "/")))
 
-	(make-directory cat-out-dir)	
+	(unless (file-directory-p cat-out-dir) (make-directory cat-out-dir))
+
 	(let ((rss-buf (find-file-noselect (concatenate 'string 
 					     cat-out-dir "rss.xml"))))
 
@@ -835,14 +968,17 @@ structures of the blog artifacts.
 
 	  (with-current-buffer rss-buf
 	    (defblog/write-rss-closing)
-	    (save-buffer 0)
-	    (kill-buffer rss-buf)))))
+	    (save-buffer 0))
+	  (kill-buffer rss-buf))))
     
     (with-current-buffer all-buf
       (defblog/write-rss-closing)
-      (save-buffer 0)
-      (kill-buffer all-buf)))))
+      (save-buffer 0))
+    (kill-buffer all-buf))))
 
+(defconst +rfc-822-time-format+ "%a, %d %b %Y %H:%M:%S %z"
+  "Format string for RFC822 Date and Time Specification, used in RSS.")
+
 (defun defblog/write-rss-opening (title description
 				 rss-link html-link last-built-date)
   (insert "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
@@ -862,7 +998,7 @@ structures of the blog artifacts.
   (when description
     (insert "    <description>" description "</description>\n"))
   (insert "    <lastBuildDate>"
-	  (format-time-string "%a, %d %b %Y %H:%M:%S %z" last-built-date)
+	  (format-time-string +rfc-822-time-format+ last-built-date)
 	  "</lastBuildDate>\n")
   (insert "    <language>en-US</language>\n")
   (insert "    <sy:updatePeriod>hourly</sy:updatePeriod>\n")
@@ -887,7 +1023,7 @@ structures of the blog artifacts.
     (insert "      <dc:creator><![CDATA[jm]]></dc:creator>\n")
     (insert "      <pubDate>"
 	    (cond
-	      (date (format-time-string "%a, %d %b %Y %H:%M:%S" date))
+	      (date (format-time-string +rfc-822-time-format+ date))
 	      (t "Fri, 08 Jan 2005 12:00:00"))
 	    " +0000</pubDate>\n")
     (insert "      <category><![CDATA["
@@ -897,7 +1033,117 @@ structures of the blog artifacts.
     (when desc
       (insert "      <description><![CDATA[" desc "]]></description>\n"))
     (insert "      <slash:comments>0</slash:comments>\n")
-    (insert "    </item>\n")))
+    (insert "    </item>\n")))
+;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+;;; Writing Atom feeds
+
+(defun defblog/write-atom (properties source-directory gen-directory
+			   category-tags file-plist-hash cat-plist-hash
+			   blog-name blog-desc blog-url blog-last-mod
+			   author-name)
+  "Write Atom files for the overall site and for each post category.
+- PROPERTIES are from org-publish.
+- SOURCE-DIRECTORY (respectively GEN-DIRECTORY) is the absolute path to the blog
+source (scratch space) directory.
+- CATEGORY-TAGS, FILE-PLIST-HASH and CAT-PLIST-HASH are the internal data
+structures of the blog artifacts.
+- BLOG-NAME, BLOG-DESC and BLOG-URL are strings describing the blog itself."
+  (let ((gen-basedir (concatenate 'string gen-directory "gen-statics/")))
+    
+    (let ((all-buf (find-file-noselect (concatenate 'string 
+					 gen-basedir "atom.xml"))))
+    (with-current-buffer all-buf
+      (erase-buffer)
+      (defblog/write-atom-opening blog-name blog-desc
+	(concatenate 'string blog-url "atom.xml") blog-url blog-last-mod))
+
+    (dolist (category-tag category-tags)
+      (let* ((cat-src-dir (concatenate 'string source-directory category-tag "/"))
+	     (post-fullpaths (file-expand-wildcards (concatenate 'string
+						      cat-src-dir "*.org")))
+	     (file-plists (mapcar #'(lambda (p) (defblog/fetch-file-plist p
+						    file-plist-hash))
+				  post-fullpaths))
+	     (cat-properties (gethash (intern category-tag) cat-plist-hash))
+
+	     (cat-atom-title (concatenate 'string blog-name ": "
+					 (plist-get cat-properties :title)))
+	     (cat-desc (plist-get cat-properties :description))	      
+	     (cat-last-mod-date (plist-get cat-properties :latest-mod))
+	     (cat-html-url (concatenate 'string blog-url category-tag "/"))
+	     (cat-atom-url (concatenate 'string cat-html-url "atom.xml"))
+
+	     (cat-out-dir (concatenate 'string gen-basedir category-tag "/")))
+
+	(unless (file-directory-p cat-out-dir) (make-directory cat-out-dir))
+	
+	(let ((atom-buf (find-file-noselect (concatenate 'string 
+					     cat-out-dir "atom.xml"))))
+
+	  (with-current-buffer atom-buf
+	    (erase-buffer)
+	    (defblog/write-atom-opening cat-atom-title cat-desc
+	      cat-atom-url cat-html-url cat-last-mod-date))
+
+	  (dolist (plist file-plists)
+	    ;; TODO Only add things from the last (let's say) five years.
+	    (with-current-buffer all-buf
+	      (defblog/write-atom-for-plist plist cat-properties author-name))
+	    (with-current-buffer atom-buf
+	      (defblog/write-atom-for-plist plist cat-properties author-name)))
+
+	  (with-current-buffer atom-buf
+	    (defblog/write-atom-closing)
+	    (save-buffer 0))
+	  (kill-buffer atom-buf))))
+    
+    (with-current-buffer all-buf
+      (defblog/write-atom-closing)
+      (save-buffer 0))
+    (kill-buffer all-buf))))
+
+(defconst +rfc-3339-time-format+ "%Y-%m-%dT%H:%M:%S%:z"
+  "Format string for RFC3339 Date and Time Specification, used in Atom.")
+
+(defun defblog/write-atom-opening (title description
+				   atom-link html-link last-built-date)
+  (insert "<?xml version=\"1.0\" encoding=\"utf-8\"?>")
+  (insert "<feed xmlns=\"http://www.w3.org/2005/Atom\">\n")
+  (insert "  <title>" title "</title>\n")
+  (insert "  <link href=\"" html-link "\" />\n")
+  (insert "  <link rel=\"self\" href=\"" atom-link "\" />\n")
+  (insert "  <id>" html-link "</id>\n")
+  ;; (when description (insert "  <summary>" description "</summary>\n"))
+  (insert "  <updated>"
+	  (format-time-string +rfc-3339-time-format+ last-built-date)
+	  "</updated>\n"))
+
+(defun defblog/write-atom-closing ()
+  (insert "</feed>\n"))
+
+(defun defblog/write-atom-for-plist (plist category-properties author-name)
+  (let* ((title (plist-get plist :title))
+	 (bare  (plist-get plist :bare))
+	 (date  (plist-get plist :date))
+	 (desc  (plist-get plist :desc))
+	 (this-link (concatenate 'string
+		      "https://maraist.org/"
+		      (plist-get category-properties :tag) "/"
+		      (replace-regexp-in-string "\\.org$" ".html" bare))))
+    (insert "\n  <entry>\n")
+    (insert "      <title>" (cond (title title) (t "(untitled)")) "</title>\n")
+    (insert "      <link href=\"" this-link "\" />\n")
+    (insert "      <id>" this-link "</id>\n")
+    (insert "      <author><name>" author-name "</name></author>\n")
+    (insert "      <updated>"
+	    (cond
+	      (date (format-time-string +rfc-3339-time-format+ date))
+	      (t (format-time-string +rfc-3339-time-format+
+				     +web-announcement-date+)))
+	    "</updated>\n")
+    (when desc
+      (insert "      <summary><![CDATA[" desc "]]></summary>\n"))
+    (insert "    </entry>\n")))
 
 ;;; =================================================================
 ;;; Copying posts into the tmp space
@@ -1013,12 +1259,14 @@ temporary files workspace."
 ;;; Debugging utilities
 
 (defun defblog/state-dump (file-plists-hash cat-list cat-plists-hash)
+  (message "--------------------")
   (dolist (file (hash-table-keys file-plists-hash))
     (message "%s\n ==> %s\n" file (gethash file file-plists-hash)))
   (message "\nCategories: %s\n" cat-list)
   (message "\nCat hash: %s\n" cat-plists-hash)
   (dolist (cat cat-list)
-    (message "%s\n ==> %s\n" cat (gethash (intern cat) cat-plists-hash))))
+    (message "%s\n ==> %s\n" cat (gethash (intern cat) cat-plists-hash)))
+  (message "--------------------"))
 
 ;;; =================================================================
 ;;; Miscellaneous utilities
