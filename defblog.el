@@ -96,7 +96,7 @@ directory layout is:
   /DIR/TO/SRC/style.css    Style sheet for the generated pages
   /DIR/TO/SRC/contact.org  A page of contact information
   /DIR/TO/SRC/jokes.org    A page of favorite jokes
-  /DIR/TO/SRC/kittens/category.txt   Properties describing the "kittens" 
+  /DIR/TO/SRC/kittens/category.txt   Properties describing the \"kittens\" 
                                      category.
   /DIR/TO/SRC/kittens/adopted.org    A post about adopting a kitten
   /DIR/TO/SRC/kittens/vet-jul20.org  A post about a trip to the vet in July 2020.
@@ -830,7 +830,7 @@ structures of the blog artifacts.
   (insert "     xmlns:slash=\"http://purl.org/rss/1.0/modules/slash/\">\n")
   (insert "  <channel>\n")
   (insert "    <title>" title "</title>\n")
-  (insert "    <atom:link href=" atom-link "\"\n")
+  (insert "    <atom:link href=\" atom-link \"\n")
   (insert "               rel=\"self\"\n")
   (insert "               type=\"application/rss+xml\" />\n")
   (insert "    <link>" html-link "</link>\n")
