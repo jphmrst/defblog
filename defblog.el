@@ -79,7 +79,7 @@
 			   (generate-atom t)
 			   author-name)
 
-  "Declare a simple-structured blog to be published with ORG-PUBLISH.
+  "Declare a simple structured blog to be published with ORG-PUBLISH.
 
 The blog contents must be under a single source directory with
 the following structure:
