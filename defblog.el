@@ -5,11 +5,31 @@
 
 ;;; Code:
 
-;; TODO Get it uploading.
-;;
 ;; TODO Not base-directory, but source-directory.  Then optional pub-
 ;; and gen-areas, but no *-subdir arguments.  If not defined, then
-;; these should create a /tmp space. 
+;; these should create a /tmp space.
+;;
+;; TODO Debug RSS
+;;
+;; TODO Add Atom
+;;
+;; TODO Add XML Sitemap
+;;
+;; TODO Centralize creating/emptying the published and temporary
+;; spaces
+;;
+;; TODO Add a way to create the ORG for the front page.
+;;
+;; TODO Add a way to create the ORG for an arbitrary page.
+;;
+;; TODO Add a sunset duration for posts in RSS/Atom feeds.
+;;
+;; TODO Add a sunset duration for posts on front page.
+;;
+;; TODO Generalize the COPY-FILE in DEFBLOG/POSTS-PREP.
+;;
+;; TODO Generalize how the title is formed for category index pages in
+;; DEFBLOG/CAT-INDICES-PREP.
 
 (cl-defmacro defblog (name base-directory blog-title 
 			   &key
@@ -19,12 +39,25 @@
 			   blog-url blog-desc
 			   (src-subdir "src/") (pub-subdir "pub/")
 			   (gen-subdir "gen/")
+			   ;;
 			   css-style-rel-path
 			   frontpage-css-style-rel-path
 			   page-css-style-rel-path
 			   post-css-style-rel-path
 			   category-index-css-style-rel-path
+			   ;;
+			   frontpage-section-numbers
+			   page-section-numbers
+			   post-section-numbers
+			   category-index-section-numbers
+			   ;;
+			   frontpage-table-of-contents
+			   page-table-of-contents
+			   post-table-of-contents
+			   category-index-table-of-contents
+			   ;;
 			   upload
+			   ;;
 			   rsync-dest rsync-shell
 			   (rsync-options '("-rLptgoD"))
 			   (rsync-delete-excluded t))
@@ -68,6 +101,7 @@ published blog should include these XML artifacts."
   (unless (string-match "/$" base-directory)
     (setf base-directory (concatenate 'string base-directory "/")))
 
+  ;; CSS-STYLE-REL-PATH as the default for various page groups.
   (unless frontpage-css-style-rel-path
     (setf frontpage-css-style-rel-path css-style-rel-path))
   (unless page-css-style-rel-path
@@ -237,7 +271,7 @@ published blog should include these XML artifacts."
        (defun ,cat-indices-prep-fn (properties)
 	 (defblog/cat-indices-prep #'(lambda () ,category-tags)
 	     ,category-plists-hash ,file-plists-hash
-	     ,tmp-basedir ,src-basedir))
+	     ,tmp-basedir ,src-basedir ,category-index-css-style-rel-path))
 
        (defun ,gen-statics-prep-fn (properties)
 	 (defblog/gen-statics-prep properties ,src-basedir ,tmp-basedir 
@@ -274,9 +308,9 @@ published blog should include these XML artifacts."
 		    :base-directory ,src-basedir
 		    :publishing-directory ,pub-basedir
 		    :publishing-function 'org-html-publish-to-html
-		    :section-numbers nil
-		    :table-of-contents nil
-		    :with-toc nil
+		    :section-numbers ,frontpage-section-numbers
+		    :table-of-contents ,frontpage-table-of-contents
+		    :with-toc ,frontpage-table-of-contents
 		    :exclude ".*" :include '("index.org")
 		    :recursive nil
 		    :html-postamble nil
@@ -301,6 +335,9 @@ published blog should include these XML artifacts."
 		    :html-postamble
 		    "<a href=\"./\">Back to the top</a>."
 		    :recursive nil
+		    :section-numbers ,page-section-numbers
+		    :table-of-contents ,page-table-of-contents
+		    :with-toc ,page-table-of-contents
 		    
 		    ,@(when page-css-style-rel-path
 			`(:html-preamble
@@ -319,6 +356,9 @@ published blog should include these XML artifacts."
 		    :html-postamble
 		    "<a href=\"../\">Back to the top</a>."
 		    :recursive t
+		    :section-numbers ,category-index-section-numbers
+		    :table-of-contents ,category-index-table-of-contents
+		    :with-toc ,category-index-table-of-contents
 		    
 		    ,@(when category-index-css-style-rel-path
 			`(:html-preamble
@@ -347,9 +387,6 @@ published blog should include these XML artifacts."
 		    :base-directory ,src-basedir
 		    :base-extension "html\\|css\\|jpg\\|gif\\|png\\|xml"
 		    :publishing-directory ,pub-basedir
-		    :section-numbers nil
-		    :table-of-contents nil
-		    :with-toc nil
 		    :recursive t))
 
 	     ;; Individual posts are copied into tmp/posts (its
@@ -362,9 +399,9 @@ published blog should include these XML artifacts."
 		    :html-postamble "<a href=\"../\">Back to the top</a>, or <a href=\"./\">more like this</a>."
 		    :recursive t
 		    :publishing-function 'org-html-publish-to-html
-		    :section-numbers nil
-		    :table-of-contents nil
-		    :with-toc nil
+		    :section-numbers ,post-section-numbers
+		    :table-of-contents ,post-table-of-contents
+		    :with-toc ,post-table-of-contents
 		    
 		    ,@(when post-css-style-rel-path
 			`(:html-preamble
@@ -703,15 +740,11 @@ structures of the blog artifacts.
 				  post-fullpaths))
 	     (cat-properties (gethash (intern category-tag) cat-plist-hash))
 
-	     ;; TODO Use parameter
-	     (cat-rss-title (concatenate 'string
-			      "JM&#8217;s website: "
-			      (plist-get cat-properties :title)))	      
+	     (cat-rss-title (concatenate 'string blog-name ": "
+					 (plist-get cat-properties :title)))
 	     (cat-desc (plist-get cat-properties :description))	      
 	     (cat-last-mod-date (plist-get cat-properties :latest-mod))
-	     ;; TODO Use parameter
-	     (cat-html-url (concatenate 'string
-			     "\"http://maraist.org/" category-tag "/"))
+	     (cat-html-url (concatenate 'string blog-url category-tag "/"))
 	     (cat-atom-url (concatenate 'string cat-html-url "atom.xml"))
 
 	     (cat-out-dir (concatenate 'string gen-basedir category-tag "/")))
@@ -819,7 +852,8 @@ structures of the blog artifacts.
 ;;; Building indices of posts in the tmp space
 
 (defun defblog/cat-indices-prep (cat-list-getter cat-plist-hash
-				 file-plist-hash tmp-basedir src-basedir)
+				 file-plist-hash tmp-basedir src-basedir
+				 cat-indices-style-link)
   "For the \"-cat-indices\" publish targets, generate category index ORG files.
 These files should be written to the cat-indices subdirectory of the
 temporary files workspace."
@@ -861,7 +895,9 @@ temporary files workspace."
 		  cat-title
 		  " [JM's website]\n"
 		  "#+html_head:  "
-		  "<link rel=stylesheet type=\"text/css\" href=\"../style.css\"/>" ;; TODO Generalize the style sheet
+		  "<link rel=stylesheet type=\"text/css\" href=\""
+		  cat-indices-style-link
+		  "\"/>"
 		  "\n\n")
 
 	  (let* ((full-files (mapcar #'(lambda (x)
