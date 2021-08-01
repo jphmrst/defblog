@@ -7,10 +7,6 @@
 ;;
 ;; TODO XML sitemap entry for root page.
 ;;
-;; TODO Global blog defaults for XML sitemap change-freq, priority:
-;; parameters/defaults, and into calls to
-;; defblog/write-xml-sitemap-entry from defblog/write-xml-sitemap.
-;;
 ;; TODO Not base-directory, but source-directory.  Then optional pub-
 ;; and gen-areas, but no *-subdir arguments.  If not defined, then
 ;; these should create a /tmp space.
@@ -64,6 +60,9 @@
 			   (rsync-delete-excluded t)
 			   ;;
 			   (generate-xml-sitemap t)
+			   (sitemap-default-change-freq 'monthly)
+			   (sitemap-default-priority 0.5)
+			   ;;
 			   (generate-rss t)
 			   (generate-atom t)
 			   default-author-name
@@ -102,7 +101,12 @@ local paths from the BASE-DIRECTORY to the CSS stylesheets for
 those groups of pages.  If not given, these arguments take the
 value of CSS-STYLE-REL-PATH.  For any of these, a NIL value means
 there should be no CSS style sheet.
-- GENERATE-XML-SITEMAP, GENERATE-RSS and GENERATE-ATOM indicate
+- GENERATE-XML-SITEMAP, if non-nil, indicates that an XML sitemap
+should be generated.  The SITEMAP-DEFAULT-CHANGE-FREQ (respectively
+SITEMAP-DEFAULT-PRIORITY) argument gives the default value for 
+pages/posts which do not otherwise have a setting for the announced
+change frequency (sitemap priority).
+- GENERATE-RSS and GENERATE-ATOM indicate
 whether the published blog should include these XML artifacts.
 The RSS and Atom feeds are validated via
 https://validator.w3.org/feed/ .  The XML sitemap is validated via
@@ -381,7 +385,9 @@ included in any XML feed (RSS or Atom).  The value may be
 	   ,file-plists-hash ,category-plists-hash
 	   ,category-tags ,blog-title ,blog-desc ,blog-url ,last-blog-update
 	   ,generate-xml-sitemap ,generate-rss ,generate-atom
-	   ,default-author-name ,feed-entry-sunset-pred))
+	   ,default-author-name ,feed-entry-sunset-pred
+	   (symbol-name ',sitemap-default-change-freq)
+	   ,sitemap-default-priority))
 
        (defun ,posts-prep-fn (properties)
 	 (defblog/posts-prep ,category-tags ,category-plists-hash
@@ -807,7 +813,8 @@ surrounding directories."
 				 category-tags blog-name blog-desc blog-url
 				 last-update generate-xml-sitemap
 				 generate-rss generate-atom
-				 default-author-name feed-entry-sunset-pred)
+				 default-author-name feed-entry-sunset-pred
+				 default-change-freq default-priority)
   "Generate XML and other non-ORG/HTML files.
 
 These files should be written to the gen-statics subdirectory of 
@@ -833,13 +840,14 @@ the temporary files workspace.
 
   (when generate-xml-sitemap
     (defblog/write-xml-sitemap properties gen-directory blog-url
-      file-plist-hash cat-plist-hash)))
+      file-plist-hash cat-plist-hash default-change-freq default-priority)))
 
 ;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ;;; Generating the XML sitemap
 
 (defun defblog/write-xml-sitemap (properties gen-directory site-url
-				  file-plist-hash cat-plist-hash)
+				  file-plist-hash cat-plist-hash
+				  default-change-freq default-priority)
   "Generate an XML sitemap for a blog.
 - PROPERTIES are from org-publish.
 - GEN-DIRECTORY is the absolute path to the scratch space directory.
@@ -866,15 +874,15 @@ structures of the blog artifacts."
 							   :bare)))))
 	      (defblog/write-xml-sitemap-entry page-url
 		  (plist-get file-plist :date) (plist-get file-plist :updated)
-		  (plist-get file-plist :change-freq) nil nil
-		  (plist-get file-plist :priority) nil nil))))
+		  (plist-get file-plist :change-freq) nil default-change-freq
+		  (plist-get file-plist :priority) nil default-priority))))
 	(dolist (cat-plist (hash-table-values cat-plist-hash))
 	  (let ((cat-tag (plist-get cat-plist :tag)))
 	    (defblog/write-xml-sitemap-entry
 		(concatenate 'string site-url cat-tag "/")
 		(plist-get cat-plist :latest-post) nil
-		nil (plist-get cat-plist :change-freq) nil
-		nil (plist-get cat-plist :sitemap-priority) nil)
+		nil (plist-get cat-plist :change-freq) default-change-freq
+		nil (plist-get cat-plist :sitemap-priority) default-priority)
 	  
 	    (dolist (file (plist-get cat-plist :post-files))
 	      ;; (message "File %s" file)
@@ -894,10 +902,10 @@ structures of the blog artifacts."
 		    (plist-get file-plist :updated)
 		    (plist-get file-plist :change-freq)
 		    (plist-get cat-plist :change-freq)
-		    nil
+		    default-change-freq
 		    (plist-get file-plist :sitemap-priority)
 		    (plist-get cat-plist :sitemap-priority)
-		    nil))))))
+		    default-priority))))))
 	(insert "</urlset>\n")
 	(save-buffer 0))
       (kill-buffer sitemap-buf))))
@@ -929,11 +937,10 @@ structures of the blog artifacts."
 	    (cond
 	      (page-priority page-priority)
 	      (group-default-priority group-default-priority)
-	      (blog-default-priority blog-default-priority)
+	      (blog-default-priority (format "%f" blog-default-priority))
 	      (t "0.5"))
 	    "</priority>\n"
 	    "  </url>\n")))
-
 
 ;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ;;; Writing RSS feeds
