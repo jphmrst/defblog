@@ -53,6 +53,10 @@ files:
 - `DESCRIPTION` A short blurb of the contents.
 - `DATE` The publication date of the page/post.
 - `UPDATED` The last change of the page/post.
+- `AUTHOR_NAME` The name of the author of the given post/page. 
+When an Atom feed is generated, either this property must be given
+for every post/page, or a non-null value for the DEFAULT-AUTHOR-NAME
+parameter must be provided to DEFBLOG.
 - `CHANGE_FREQ` A hint about how often a page/post changes, to be
   included in the XML sitemap.  Valid values are discussed at
   [[https://www.sitemaps.org/protocol.html#changefreqdef]].

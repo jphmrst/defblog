@@ -33,9 +33,6 @@
 ;;
 ;; TODO Ignore index.org source files in the category directories.
 ;;
-;; TODO Change AUTHOR-NAME to DEFAULT-AUTHOR-NAME; add AUTHOR-NAME
-;; property to post plists.
-;;
 ;; TODO Add blog-default page sitemap change frequency, priority.
 
 (cl-defmacro defblog (name base-directory blog-title 
@@ -71,7 +68,7 @@
 			   (generate-xml-sitemap t)
 			   (generate-rss t)
 			   (generate-atom t)
-			   author-name)
+			   default-author-name)
 
   "Declare a simple structured blog to be published with ORG-PUBLISH.
 
@@ -117,9 +114,6 @@ https://www.xml-sitemaps.com/validate-xml-sitemap.html ."
   (when (or generate-rss generate-atom)
     (unless blog-url
       (error "Generating RSS/Atom feed requires BLOG-URL"))) 
-  (when generate-atom
-    (unless author-name
-      (error "Generating Atom feed requires AUTHOR-NAME")))
   (unless (or (null upload) (eq upload :rsync))
     (error "Unrecognized value for upload: %s" upload))
  
@@ -312,8 +306,7 @@ https://www.xml-sitemaps.com/validate-xml-sitemap.html ."
 				      "--rsh=" rsync-shell)))
 			  ,@(when rsync-delete-excluded `("--delete-excluded"))
 			  ,(concatenate 'string base-directory pub-subdir)
-			  ,rsync-dest
-	     )))
+			  ,rsync-dest)))
 	 (message "Cleaning up defblog temp structures")
 	 (clrhash ,file-plists-hash)
 	 (clrhash ,category-plists-hash)
@@ -328,14 +321,16 @@ https://www.xml-sitemaps.com/validate-xml-sitemap.html ."
        (defun ,cat-indices-prep-fn (properties)
 	 (defblog/cat-indices-prep #'(lambda () ,category-tags)
 	     ,category-plists-hash ,file-plists-hash
-	     ,gen-directory-var ,source-directory-var ,category-index-css-style-rel-path))
+	     ,gen-directory-var ,source-directory-var
+	     ,category-index-css-style-rel-path))
 
        (defun ,gen-statics-prep-fn (properties)
-	 (defblog/gen-statics-prep properties ,source-directory-var ,gen-directory-var 
+	 (defblog/gen-statics-prep properties ,source-directory-var
+	   ,gen-directory-var 
 	   ,file-plists-hash ,category-plists-hash
 	   ,category-tags ,blog-title ,blog-desc ,blog-url ,last-blog-update
 	   ,generate-xml-sitemap ,generate-rss ,generate-atom
-	   ,author-name))
+	   ,default-author-name))
 
        (defun ,posts-prep-fn (properties)
 	 (defblog/posts-prep ,category-tags ,category-plists-hash
@@ -612,6 +607,7 @@ surrounding directories."
     (values (list :bare bare-file :path path :depth depth
 		  :title (nth 1 (assoc "TITLE" keyvals))
 		  :desc (nth 1 (assoc "DESCRIPTION" keyvals))
+		  :author-name (nth 1 (assoc "AUTHOR_NAME" keyvals))
 		  :date post-date :updated post-updated
 		  :sitemap-priority priority :change-freq change-freq)
 	    post-date post-updated)))
@@ -751,7 +747,7 @@ surrounding directories."
 				 file-plist-hash cat-plist-hash
 				 category-tags blog-name blog-desc blog-url
 				 last-update generate-xml-sitemap
-				 generate-rss generate-atom author-name)
+				 generate-rss generate-atom default-author-name)
   "Generate XML and other non-ORG/HTML files.
 
 These files should be written to the gen-statics subdirectory of 
@@ -770,7 +766,8 @@ the temporary files workspace.
   (when generate-atom
     (defblog/write-atom properties source-directory gen-directory category-tags
 			file-plist-hash cat-plist-hash
-			blog-name blog-desc blog-url last-update author-name))
+			blog-name blog-desc blog-url
+			last-update default-author-name))
 
   (when generate-xml-sitemap
     (defblog/write-xml-sitemap properties gen-directory blog-url
@@ -883,8 +880,8 @@ structures of the blog artifacts."
 			  blog-name blog-desc blog-url blog-last-mod)
   "Write RSS files for the overall site and for each post category.
 - PROPERTIES are from org-publish.
-- SOURCE-DIRECTORY (respectively GEN-DIRECTORY) is the absolute path to the blog
-source (scratch space) directory.
+- SOURCE-DIRECTORY (respectively GEN-DIRECTORY) is the absolute path 
+to the blog source (scratch space) directory.
 - CATEGORY-TAGS, FILE-PLIST-HASH and CAT-PLIST-HASH are the internal data
 structures of the blog artifacts.
 - BLOG-NAME, BLOG-DESC and BLOG-URL are strings describing the blog itself."
@@ -897,7 +894,8 @@ structures of the blog artifacts.
 	(concatenate 'string blog-url "rss.xml") blog-url blog-last-mod))
 
     (dolist (category-tag category-tags)
-      (let* ((cat-src-dir (concatenate 'string source-directory category-tag "/"))
+      (let* ((cat-src-dir (concatenate 'string
+			    source-directory category-tag "/"))
 	     (post-fullpaths (file-expand-wildcards (concatenate 'string
 						      cat-src-dir "*.org")))
 	     (file-plists (mapcar #'(lambda (p) (defblog/fetch-file-plist p
@@ -994,7 +992,6 @@ structures of the blog artifacts.
     (insert "      <category><![CDATA["
 	    (plist-get category-properties :title)
 	    "]]></category>\n")
-    ;; (insert "      <guid isPermaLink=\"false\">http://maraist.org/?p=425</guid>\n")
     (when desc
       (insert "      <description><![CDATA[" desc "]]></description>\n"))
     (insert "      <slash:comments>0</slash:comments>\n")
@@ -1005,14 +1002,15 @@ structures of the blog artifacts.
 (defun defblog/write-atom (properties source-directory gen-directory
 			   category-tags file-plist-hash cat-plist-hash
 			   blog-name blog-desc blog-url blog-last-mod
-			   author-name)
+			   default-author-name)
   "Write Atom files for the overall site and for each post category.
 - PROPERTIES are from org-publish.
-- SOURCE-DIRECTORY (respectively GEN-DIRECTORY) is the absolute path to the blog
-source (scratch space) directory.
-- CATEGORY-TAGS, FILE-PLIST-HASH and CAT-PLIST-HASH are the internal data
-structures of the blog artifacts.
-- BLOG-NAME, BLOG-DESC and BLOG-URL are strings describing the blog itself."
+- SOURCE-DIRECTORY (respectively GEN-DIRECTORY) is the absolute path to 
+the blog source (scratch space) directory.
+- CATEGORY-TAGS, FILE-PLIST-HASH and CAT-PLIST-HASH are the internal 
+data structures of the blog artifacts.
+- BLOG-NAME, BLOG-DESC and BLOG-URL are strings describing the blog
+itself."
   (let ((gen-basedir (concatenate 'string gen-directory "gen-statics/")))
     
     (let ((all-buf (find-file-noselect (concatenate 'string 
@@ -1023,7 +1021,8 @@ structures of the blog artifacts.
 	(concatenate 'string blog-url "atom.xml") blog-url blog-last-mod))
 
     (dolist (category-tag category-tags)
-      (let* ((cat-src-dir (concatenate 'string source-directory category-tag "/"))
+      (let* ((cat-src-dir (concatenate 'string
+			    source-directory category-tag "/"))
 	     (post-fullpaths (file-expand-wildcards (concatenate 'string
 						      cat-src-dir "*.org")))
 	     (file-plists (mapcar #'(lambda (p) (defblog/fetch-file-plist p
@@ -1053,9 +1052,11 @@ structures of the blog artifacts.
 	  (dolist (plist file-plists)
 	    ;; TODO Only add things from the last (let's say) five years.
 	    (with-current-buffer all-buf
-	      (defblog/write-atom-for-plist plist cat-properties author-name))
+	      (defblog/write-atom-for-plist plist cat-properties
+		default-author-name))
 	    (with-current-buffer atom-buf
-	      (defblog/write-atom-for-plist plist cat-properties author-name)))
+	      (defblog/write-atom-for-plist plist cat-properties
+		default-author-name)))
 
 	  (with-current-buffer atom-buf
 	    (defblog/write-atom-closing)
@@ -1086,11 +1087,13 @@ structures of the blog artifacts.
 (defun defblog/write-atom-closing ()
   (insert "</feed>\n"))
 
-(defun defblog/write-atom-for-plist (plist category-properties author-name)
-  (let* ((title (plist-get plist :title))
-	 (bare  (plist-get plist :bare))
-	 (date  (plist-get plist :date))
-	 (desc  (plist-get plist :desc))
+(defun defblog/write-atom-for-plist (file-properties category-properties
+				     default-author-name)
+  (let* ((title (plist-get file-properties :title))
+	 (bare (plist-get file-properties :bare))
+	 (date (plist-get file-properties :date))
+	 (desc (plist-get file-properties :desc))
+	 (author (plist-get file-properties :author-name))
 	 (this-link (concatenate 'string
 		      "https://maraist.org/"
 		      (plist-get category-properties :tag) "/"
@@ -1099,7 +1102,12 @@ structures of the blog artifacts.
     (insert "      <title>" (cond (title title) (t "(untitled)")) "</title>\n")
     (insert "      <link href=\"" this-link "\" />\n")
     (insert "      <id>" this-link "</id>\n")
-    (insert "      <author><name>" author-name "</name></author>\n")
+    (insert "      <author><name>"
+	    (cond
+	      (author author)
+	      (default-author-name default-author-name)
+	      (t (error "No author (or default) for file %s" bare)))
+	    "</name></author>\n")
     (insert "      <updated>"
 	    (cond
 	      (date (format-time-string +rfc-3339-time-format+ date))
