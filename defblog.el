@@ -12,7 +12,7 @@
 ;; these should create a /tmp space.
 ;;
 ;; TODO Centralize creating/emptying the published and temporary
-;; spaces
+;; spaces.
 ;;
 ;; TODO Add a way to create the ORG for the front page.
 ;;
