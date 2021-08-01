@@ -4,16 +4,16 @@
 ;;; Commentary:
 
 ;;; Code:
-
-;; TODO Not base-directory, but source-directory.  Then optional pub-
-;; and gen-areas, but no *-subdir arguments.  If not defined, then
-;; these should create a /tmp space.
 ;;
 ;; TODO XML sitemap entry for root page.
 ;;
 ;; TODO Global blog defaults for XML sitemap change-freq, priority:
 ;; parameters/defaults, and into calls to
 ;; defblog/write-xml-sitemap-entry from defblog/write-xml-sitemap.
+;;
+;; TODO Not base-directory, but source-directory.  Then optional pub-
+;; and gen-areas, but no *-subdir arguments.  If not defined, then
+;; these should create a /tmp space.
 ;;
 ;; TODO Centralize creating/emptying the published and temporary
 ;; spaces
