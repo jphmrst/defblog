@@ -68,7 +68,9 @@
 			   (generate-xml-sitemap t)
 			   (generate-rss t)
 			   (generate-atom t)
-			   default-author-name)
+			   default-author-name
+			   ;;
+			   feed-entry-sunset)
 
   "Declare a simple structured blog to be published with ORG-PUBLISH.
 
@@ -106,8 +108,17 @@ there should be no CSS style sheet.
 whether the published blog should include these XML artifacts.
 The RSS and Atom feeds are validated via
 https://validator.w3.org/feed/ .  The XML sitemap is validated via
-https://www.xml-sitemaps.com/validate-xml-sitemap.html ."
-
+https://www.xml-sitemaps.com/validate-xml-sitemap.html .
+- FEED-ENTRY-SUNSET gives the length of time that a post should be 
+included in any XML feed (RSS or Atom).  The value may be 
+ 1. An Emacs Lisp time value (used as-is: the age of a post 
+    calculated via TIME-SUBTRACT, and compared to this upper
+    bound).
+ 2. A Lisp list (passed as arguments to MAKE-DECODED-TIME,
+    whose result is used as a sunset bound as above).
+ 3. A string (passed to PARSE-TIME-STRING, and used as an
+    absolute limit of the earliest date included."
+  
   ;; Check fatal combinations of present/missing arguments.
   (unless (file-directory-p base-directory)
     (error "Expected a directory for :base-directory %s" base-directory))
@@ -185,7 +196,32 @@ https://www.xml-sitemaps.com/validate-xml-sitemap.html ."
 	(overall-cleanup-fn (intern (concatenate 'string
 				      "defblog/" name "/overall-cleanup")))
 	(state-dump-fn (intern (concatenate 'string
-				      "defblog/" name "/state-dump"))))
+				 "defblog/" name "/state-dump")))
+
+	;; Sunset time for feed entries.
+	(feed-entry-sunset-pred
+	 (cond
+	   ((null feed-entry-sunset) #'(lambda (x) t))
+	   ((or (integerp feed-entry-sunset)
+		(and (consp feed-entry-sunset)
+		     (integerp (car feed-entry-sunset))
+		     (integerp (cdr feed-entry-sunset)))
+		(and (listp feed-entry-sunset)
+		     (eql 4 (length feed-entry-sunset))
+		     (integerp (car feed-entry-sunset))
+		     (integerp (cadr feed-entry-sunset))
+		     (integerp (caddr feed-entry-sunset))
+		     (integerp (cadddr feed-entry-sunset))))
+	    #'(lambda (x) (time-less-p (time-subtract nil x)
+				       feed-entry-sunset)))
+	   ((listp feed-entry-sunset)
+	    (let ((bound (apply #'make-decoded-time feed-entry-sunset)))
+	      #'(lambda (x) (time-less-p (time-subtract nil x) bound))))
+	   ((stringp feed-entry-sunset)
+	    (let ((min (parse-time-string feed-entry-sunset)))
+	      #'(lambda (x) (time-less-p min x))))
+	   (t (error "Unrecognized value for FEED-ENTRY-SUNSET: %s"
+		     feed-entry-sunset)))))
     
     `(progn
 
@@ -330,7 +366,7 @@ https://www.xml-sitemaps.com/validate-xml-sitemap.html ."
 	   ,file-plists-hash ,category-plists-hash
 	   ,category-tags ,blog-title ,blog-desc ,blog-url ,last-blog-update
 	   ,generate-xml-sitemap ,generate-rss ,generate-atom
-	   ,default-author-name))
+	   ,default-author-name ,feed-entry-sunset-pred))
 
        (defun ,posts-prep-fn (properties)
 	 (defblog/posts-prep ,category-tags ,category-plists-hash
@@ -747,7 +783,8 @@ surrounding directories."
 				 file-plist-hash cat-plist-hash
 				 category-tags blog-name blog-desc blog-url
 				 last-update generate-xml-sitemap
-				 generate-rss generate-atom default-author-name)
+				 generate-rss generate-atom
+				 default-author-name feed-entry-sunset-pred)
   "Generate XML and other non-ORG/HTML files.
 
 These files should be written to the gen-statics subdirectory of 
@@ -761,13 +798,15 @@ the temporary files workspace.
   (when generate-rss
     (defblog/write-rss properties source-directory gen-directory category-tags
 		       file-plist-hash cat-plist-hash
-		       blog-name blog-desc blog-url last-update))
+		       blog-name blog-desc blog-url last-update
+		       feed-entry-sunset-pred))
 
   (when generate-atom
     (defblog/write-atom properties source-directory gen-directory category-tags
 			file-plist-hash cat-plist-hash
 			blog-name blog-desc blog-url
-			last-update default-author-name))
+			last-update default-author-name
+			feed-entry-sunset-pred))
 
   (when generate-xml-sitemap
     (defblog/write-xml-sitemap properties gen-directory blog-url
@@ -800,8 +839,9 @@ structures of the blog artifacts."
 		    (replace-regexp-in-string "\\.org$" ".html"
 					      (concatenate 'string
 						site-url
-						(plist-get file-plist :bare)))))
-	      (defblog/write-xml-sitemap-url page-url
+						(plist-get file-plist
+							   :bare)))))
+	      (defblog/write-xml-sitemap-entry page-url
 		  (plist-get file-plist :date) (plist-get file-plist :updated)
 		  (plist-get file-plist :change-freq) nil nil
 		  (plist-get file-plist :priority) nil nil))))
@@ -877,7 +917,8 @@ structures of the blog artifacts."
 
 (defun defblog/write-rss (properties source-directory gen-directory
 			  category-tags file-plist-hash cat-plist-hash
-			  blog-name blog-desc blog-url blog-last-mod)
+			  blog-name blog-desc blog-url blog-last-mod
+			  feed-entry-sunset-pred)
   "Write RSS files for the overall site and for each post category.
 - PROPERTIES are from org-publish.
 - SOURCE-DIRECTORY (respectively GEN-DIRECTORY) is the absolute path 
@@ -996,13 +1037,14 @@ structures of the blog artifacts.
       (insert "      <description><![CDATA[" desc "]]></description>\n"))
     (insert "      <slash:comments>0</slash:comments>\n")
     (insert "    </item>\n")))
+
 ;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ;;; Writing Atom feeds
 
 (defun defblog/write-atom (properties source-directory gen-directory
 			   category-tags file-plist-hash cat-plist-hash
 			   blog-name blog-desc blog-url blog-last-mod
-			   default-author-name)
+			   default-author-name feed-entry-sunset-pred)
   "Write Atom files for the overall site and for each post category.
 - PROPERTIES are from org-publish.
 - SOURCE-DIRECTORY (respectively GEN-DIRECTORY) is the absolute path to 
