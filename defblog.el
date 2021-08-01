@@ -26,8 +26,6 @@
 ;; DEFBLOG/CAT-INDICES-PREP.
 ;;
 ;; TODO Ignore index.org source files in the category directories.
-;;
-;; TODO Add blog-default page sitemap change frequency, priority.
 
 (cl-defmacro defblog (name base-directory blog-title 
 			   &key
@@ -361,13 +359,18 @@ included in any XML feed (RSS or Atom).  The value may be
 				      "--rsh=" rsync-shell)))
 			  ,@(when rsync-delete-excluded `("--delete-excluded"))
 			  ,(concatenate 'string base-directory pub-subdir)
-			  ,rsync-dest)))
-	 (message "Cleaning up defblog temp structures")
+			  ,rsync-dest)
+	    (message "Uploading...done"))
+	   ((null ,upload)
+	    (message "Uploading not selected")))
+	 
+	 (message "Cleaning up defblog temp structures...")
 	 (clrhash ,file-plists-hash)
 	 (clrhash ,category-plists-hash)
 	 (setf ,category-tags nil)
 	 (when ,use-system-tmpspace-var
-	   (delete-directory ,system-tmpspace-var t)))
+	   (delete-directory ,system-tmpspace-var t))
+	 (message "Cleaning up defblog temp structures...done"))
 
        (defun ,state-dump-fn ()
 	 (defblog/state-dump ,file-plists-hash
