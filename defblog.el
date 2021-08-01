@@ -22,8 +22,6 @@
 ;;
 ;; TODO Add a way to create the ORG for an arbitrary page.
 ;;
-;; TODO Add a sunset duration for posts in RSS/Atom feeds.
-;;
 ;; TODO Add a sunset duration for posts on front page.
 ;;
 ;; TODO Generalize the COPY-FILE in DEFBLOG/POSTS-PREP.
@@ -201,7 +199,9 @@ included in any XML feed (RSS or Atom).  The value may be
 	;; Sunset time for feed entries.
 	(feed-entry-sunset-pred
 	 (cond
-	   ((null feed-entry-sunset) #'(lambda (x) t))
+	   ((null feed-entry-sunset)
+	    ;; (message "feed-entry-sunset-pred (1)")
+	    `#'(lambda (x) t))
 	   ((or (integerp feed-entry-sunset)
 		(and (consp feed-entry-sunset)
 		     (integerp (car feed-entry-sunset))
@@ -212,14 +212,29 @@ included in any XML feed (RSS or Atom).  The value may be
 		     (integerp (cadr feed-entry-sunset))
 		     (integerp (caddr feed-entry-sunset))
 		     (integerp (cadddr feed-entry-sunset))))
-	    #'(lambda (x) (time-less-p (time-subtract nil x)
-				       feed-entry-sunset)))
+	    ;; (message "feed-entry-sunset-pred (2)")
+	    `#'(lambda (x)
+		 (let ((min (time-subtract (current-time)
+					   ',feed-entry-sunset)))
+		   ;; (message " - Comparing to minimum %s"
+		   ;;	    (format-time-string "%d %b %Y" min))
+		   (time-less-p min x))))
 	   ((listp feed-entry-sunset)
-	    (let ((bound (apply #'make-decoded-time feed-entry-sunset)))
-	      #'(lambda (x) (time-less-p (time-subtract nil x) bound))))
+	    ;; (message "feed-entry-sunset-pred (3)")
+	    (let ((bound (mapcar
+			  #'(lambda (x) (cond ((null x) 0) (t (- x))))
+			  (apply #'make-decoded-time feed-entry-sunset))))
+	      `#'(lambda (x)
+		   (let ((min (encode-time (decoded-time-add
+					    (decode-time (current-time))
+					    ',bound))))
+		     ;; (message " - Comparing to minimum %s"
+		     ;;	      (format-time-string "%d %b %Y" min))
+		     (time-less-p min x)))))
 	   ((stringp feed-entry-sunset)
+	    ;; (message "feed-entry-sunset-pred (4)")
 	    (let ((min (parse-time-string feed-entry-sunset)))
-	      #'(lambda (x) (time-less-p min x))))
+	      `#'(lambda (x) (time-less-p ',min x))))
 	   (t (error "Unrecognized value for FEED-ENTRY-SUNSET: %s"
 		     feed-entry-sunset)))))
     
@@ -639,12 +654,20 @@ surrounding directories."
 		      (t nil)))
 	 (post-updated (cond
 			 (bare-updated (date-to-time (nth 1 bare-updated)))
-			 (t nil))))
+			 (t nil)))
+	 (post-mod (cond
+		     ((and (null post-date) (null post-updated))
+		      +web-announcement-date+)
+		     ((null post-date) post-updated)
+		     ((null post-updated) post-date)
+		     ((time-less-p post-date post-updated) post-updated)
+		     (t post-date))))
     (values (list :bare bare-file :path path :depth depth
 		  :title (nth 1 (assoc "TITLE" keyvals))
 		  :desc (nth 1 (assoc "DESCRIPTION" keyvals))
 		  :author-name (nth 1 (assoc "AUTHOR_NAME" keyvals))
 		  :date post-date :updated post-updated
+		  :mod post-mod
 		  :sitemap-priority priority :change-freq change-freq)
 	    post-date post-updated)))
 
@@ -823,7 +846,7 @@ the temporary files workspace.
 - CATEGORY-TAGS, FILE-PLIST-HASH and CAT-PLIST-HASH are the internal data
 structures of the blog artifacts."
 
-  (message "Generating XML sitemap")
+  ;; (message "Generating XML sitemap")
   (let ((gen-basedir (concatenate 'string gen-directory "gen-statics/")))    
     (let ((sitemap-buf (find-file-noselect (concatenate 'string 
 					     gen-basedir "sitemap.xml"))))
@@ -854,12 +877,12 @@ structures of the blog artifacts."
 		nil (plist-get cat-plist :sitemap-priority) nil)
 	  
 	    (dolist (file (plist-get cat-plist :post-files))
-	      (message "File %s" file)
+	      ;; (message "File %s" file)
 	      (let* ((file-fullpath (concatenate 'string
 				      (plist-get cat-plist :src-dir) file))
 		     (file-plist (gethash (intern file-fullpath)
 					  file-plist-hash)))
-		(message "     plist %s" file-plist)
+		;; (message "     plist %s" file-plist)
 		(let* ((base-file-src (plist-get file-plist :bare))
 		       (page-url
 			(concatenate 'string
@@ -964,11 +987,16 @@ structures of the blog artifacts.
 	      cat-atom-url cat-html-url cat-last-mod-date))
 
 	  (dolist (plist file-plists)
-	    ;; TODO Only add things from the last (let's say) five years.
-	    (with-current-buffer all-buf
-	      (defblog/write-rss-for-plist plist cat-properties))
-	    (with-current-buffer rss-buf
-	      (defblog/write-rss-for-plist plist cat-properties)))
+	    ;; (message "- Considering post for RSS feed: %s (%s)"
+	    ;; 	     (plist-get plist :bare)
+	    ;; 	     (format-time-string "%d %b %Y"
+	    ;; 				 (plist-get plist :mod)))
+	    (when (funcall feed-entry-sunset-pred (plist-get plist :mod))
+	      ;; (message "  Added")
+	      (with-current-buffer all-buf
+		(defblog/write-rss-for-plist plist cat-properties))
+	      (with-current-buffer rss-buf
+		(defblog/write-rss-for-plist plist cat-properties))))
 
 	  (with-current-buffer rss-buf
 	    (defblog/write-rss-closing)
@@ -1092,13 +1120,19 @@ itself."
 	      cat-atom-url cat-html-url cat-last-mod-date))
 
 	  (dolist (plist file-plists)
-	    ;; TODO Only add things from the last (let's say) five years.
-	    (with-current-buffer all-buf
-	      (defblog/write-atom-for-plist plist cat-properties
-		default-author-name))
-	    (with-current-buffer atom-buf
-	      (defblog/write-atom-for-plist plist cat-properties
-		default-author-name)))
+	    ;; Only add things from the last (let's say) five years.
+	    (message "- Considering post for Atom feed: %s (%s)"
+		     (plist-get plist :bare)
+		     (format-time-string "%d %b %Y"
+					 (plist-get plist :mod)))
+	    (when (funcall feed-entry-sunset-pred (plist-get plist :mod))
+	      (message "  Added")
+	      (with-current-buffer all-buf
+		(defblog/write-atom-for-plist plist cat-properties
+		  default-author-name))
+	      (with-current-buffer atom-buf
+		(defblog/write-atom-for-plist plist cat-properties
+		  default-author-name))))
 
 	  (with-current-buffer atom-buf
 	    (defblog/write-atom-closing)
