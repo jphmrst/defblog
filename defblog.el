@@ -11,12 +11,6 @@
 ;;
 ;; TODO XML sitemap entry for root page.
 ;;
-;; TODO Into file plists from Org properties: :change-freq,
-;; :sitemap-priority.
-;;
-;; TODO Into category plists from Org properties: :change-freq,
-;; :sitemap-priority.
-;;
 ;; TODO Global blog defaults for XML sitemap change-freq, priority:
 ;; parameters/defaults, and into calls to
 ;; defblog/write-xml-sitemap-entry from defblog/write-xml-sitemap.
@@ -81,46 +75,10 @@
 
   "Declare a simple structured blog to be published with ORG-PUBLISH.
 
-The blog contents must be under a single source directory with
-the following structure:
-- The `index.org` file, if it exists, is the front page of the blog.  
-However this page may be generated instead; see the ZZZZZZZZZZZZZZ 
-option below.
-- The other top level *.org pages correspond to individual undated 
-pages (i.e., not posts).
-- Each directory within the source directory which contains a file 
-`category.txt` corresponds to a category of posts.  The category.txt 
-files will be loaded as Org-mode files.
-- Category directories should not contain an index.org file!  An
-index of posts will be generated, and this file will be ignored.
-- Otherwise, each ORG file in a category directory corresponds to 
-a blog post.
+Information about file layout, Org property use, and other
+details is in the README.md file at https://github.com/jphmrst/defblog .
 
-DEFBLOG will use the following properties of page and post Org
-files:
-- TITLE :: The title of the page/post.  Note that org-publish will 
-place this title as the headline of the HTML it generates.
-- DESCRIPTION :: A short blurb of the contents.
-- DATE :: The publication date of the page/post.
-- UPDATED :: The last change of the page/post.
-
-So if the source directory is /DIR/TO/SRC, then a possible
-directory layout is:
-
-  /DIR/TO/SRC/index.org    Top-level page
-  /DIR/TO/SRC/style.css    Style sheet for the generated pages
-  /DIR/TO/SRC/contact.org  A page of contact information
-  /DIR/TO/SRC/jokes.org    A page of favorite jokes
-  /DIR/TO/SRC/kittens/category.txt   Properties describing the \"kittens\" 
-                                     category.
-  /DIR/TO/SRC/kittens/adopted.org    A post about adopting a kitten
-  /DIR/TO/SRC/kittens/vet-jul20.org  A post about a trip to the vet 
-                                     in July 2020.
-
-DEFBLOG will also use the TITLE and DESCRIPTION properties of
-category.txt files.
-
-Required parameters:
+Required parameters to this macro:
 - NAME, a string used to identify this blog.  This NAME is used by 
 ORG-PUBLISH to publish this particular blog, and it is also used to
 name generated storage locations so that they do not conflict with
@@ -132,8 +90,9 @@ and HTML output directory for this blog.
 site.
 
 Optional parameters:
-- BLOG-URL gives the URL for the top of this blog.  This value is
-required if generating most of the XML artifacts.
+- BLOG-URL (respectively BLOG-DESC) gives the URL for the top of 
+this blog (human-facing description of the web site).  The URL
+is required when generating most of the XML artifacts.
 - SRC-SUBDIR, PUB-SUBDIR and GEN-SUBDIR are the local paths from
 BASE-DIRECTORY to the respective subdirectories for the blog
 source, the HTML-output (\"published\") area, and the temporary
@@ -642,6 +601,8 @@ surrounding directories."
   "Given a key-values list, set up a plist for a file path."
   (let* ((bare-date (assoc "DATE" keyvals))
 	 (bare-updated (assoc "UPDATED" keyvals))
+	 (priority (nth 1 (assoc "SITEMAP_PRIORITY" keyvals)))
+	 (change-freq (nth 1 (assoc "CHANGE_FREQ" keyvals)))
 	 (post-date (cond
 		      (bare-date (date-to-time (nth 1 bare-date)))
 		      (t nil)))
@@ -651,7 +612,8 @@ surrounding directories."
     (values (list :bare bare-file :path path :depth depth
 		  :title (nth 1 (assoc "TITLE" keyvals))
 		  :desc (nth 1 (assoc "DESCRIPTION" keyvals))
-		  :date post-date :updated post-updated)
+		  :date post-date :updated post-updated
+		  :sitemap-priority priority :change-freq change-freq)
 	    post-date post-updated)))
 
 (defun defblog/kwdpair (kwd)
@@ -711,12 +673,15 @@ surrounding directories."
 	  (kill-buffer buf)
 	
 	  ;; Form a plist for the category.
-	  (let ((plist `(:tag ,cat-tag
-			      :src-dir ,cat-src-dir
-			      :title ,(nth 1 (assoc "TITLE" keyvals))
-			      :description ,(nth 1 (assoc "DESCRIPTION"
-							  keyvals))
-			      :post-files ,posts-list)))
+	  (let ((plist
+		 `(:tag ,cat-tag
+			:src-dir ,cat-src-dir
+			:title ,(nth 1 (assoc "TITLE" keyvals))
+			:description ,(nth 1 (assoc "DESCRIPTION" keyvals))
+			:sitemap-priority ,(nth 1 (assoc "SITEMAP_PRIORITY"
+							 keyvals))
+			:change-freq ,(nth 1 (assoc "CHANGE_FREQ" keyvals))
+			:post-files ,posts-list)))
 
 	    ;; Store the plist in the hash.
 	    ;; (message "%s\n  %s %s\n  %s %s" full-path cat-tag keyvals (intern cat-tag) plist)
