@@ -8,11 +8,6 @@
 ;;
 ;; FRONT PAGE STUFF:
 ;;
-;; - TODO Add a copy-to-scratch step for the front page.
-;;
-;; - TODO Abstract out the copy-to-scratch function for the front
-;; - page.
-;;
 ;; - TODO Write a front page copy function with magic comments: for
 ;; - including recent posts, etc.
 ;;
@@ -32,6 +27,7 @@
                            retain-published-directory
                            retain-generated-directories
                            (post-copy-function 'copy-file)
+                           (front-copy-function 'copy-file)
                            (cat-index-title-fn
                             '(lambda (cat-plist blog-title)
                               (concatenate 'string
@@ -357,7 +353,12 @@ included in any XML feed (RSS or Atom).  The value may be
              #'(lambda (x) (setf ,last-blog-update x)))
          (message "Setting up defblog temp structures...done")
          ;; (,state-dump-fn)
-         )
+
+         ;; The setup for the front page is just to copy it in to its
+         ;; scratch area.
+         (funcall #',front-copy-function
+                  (concatenate 'string ,source-directory-var "index.org")
+                  (concatenate 'string ,gen-directory-var "front/index.org")))
 
        (defun ,overall-cleanup-fn (properties)
 
@@ -446,7 +447,8 @@ included in any XML feed (RSS or Atom).  The value may be
              ;; need to copy it anywhere.
              (top-page-entry
               (list :preparation-function ',overall-setup-fn
-                    :base-directory ,source-directory-var
+                    :base-directory (concatenate 'string
+                                      ,gen-directory-var "front/")
                     :publishing-directory ,publish-directory-var
                     :publishing-function 'org-html-publish-to-html
                     :section-numbers ,frontpage-section-numbers
@@ -1396,7 +1398,7 @@ temporary files workspace."
     (t (filter f (cdr xs)))))
 
 (defconst +defblog/scratch-subdirectories+
-  '("cat-indices" "gen-statics" "posts")
+  '("cat-indices" "gen-statics" "posts" "front")
   "Scratch space subdirectories used internally by DEFBLOG.")
 
 (defconst +web-announcement-date+
