@@ -27,7 +27,7 @@
 ;;
 ;; TODO Ignore index.org source files in the category directories.
 
-(cl-defmacro defblog (name base-directory blog-title 
+(cl-defmacro defblog (name source-directory blog-title 
 			   &key
 			   blog-url blog-desc
 			   published-directory generated-directory
@@ -74,7 +74,7 @@ Required parameters to this macro:
 ORG-PUBLISH to publish this particular blog, and it is also used to
 name generated storage locations so that they do not conflict with
 the names used for other blogs.
-- BASE-DIRECTORY, a string giving the absolute pathname of the 
+- SOURCE-DIRECTORY, a string giving the absolute pathname of the 
 directory containing the source directory, scratch work space,
 and HTML output directory for this blog.
 - BLOG-TITLE, a string with the human-oriented name for this web 
@@ -84,11 +84,11 @@ Optional parameters:
 - BLOG-URL (respectively BLOG-DESC) gives the URL for the top of 
 this blog (human-facing description of the web site).  The URL
 is required when generating most of the XML artifacts.
-- CSS-STYLE-SUBPATH, the local path from the BASE-DIRECTORY to 
+- CSS-STYLE-SUBPATH, the local path from the SOURCE-DIRECTORY to 
 default CSS stylesheet for the blog.
 - FRONTPAGE-CSS-STYLE-REL-PATH, PAGE-CSS-STYLE-REL-PATH,
 POST-CSS-STYLE-REL-PATH and CATEGORY-INDEX-CSS-STYLE-REL-PATH are
-local paths from the BASE-DIRECTORY to the CSS stylesheets for
+local paths from the SOURCE-DIRECTORY to the CSS stylesheets for
 those groups of pages.  If not given, these arguments take the
 value of CSS-STYLE-REL-PATH.  For any of these, a NIL value means
 there should be no CSS style sheet.
@@ -113,8 +113,8 @@ included in any XML feed (RSS or Atom).  The value may be
     absolute limit of the earliest date included."
   
   ;; Check fatal combinations of present/missing arguments.
-  (unless (file-directory-p base-directory)
-    (error "Expected a directory for :base-directory %s" base-directory))
+  (unless (file-directory-p source-directory)
+    (error "Expected a directory for SOURCE-DIRECTORY %s" source-directory))
   
   (when (or generate-rss generate-atom)
     (unless blog-url
@@ -128,8 +128,8 @@ included in any XML feed (RSS or Atom).  The value may be
      "No upload method specified, but no local :PUBLISHED-DIRECTORY given"))
  
   ;; Refinements to the given arguments.
-  (unless (string-match "/$" base-directory)
-    (setf base-directory (concatenate 'string base-directory "/")))
+  (unless (string-match "/$" source-directory)
+    (setf source-directory (concatenate 'string source-directory "/")))
 
   ;; CSS-STYLE-REL-PATH as the default for various page groups.
   (unless frontpage-css-style-rel-path
@@ -282,7 +282,7 @@ included in any XML feed (RSS or Atom).  The value may be
 
        (when (boundp ',source-directory-var)
 	 (makunbound ',source-directory-var))
-       (defvar ,source-directory-var ,base-directory
+       (defvar ,source-directory-var ,source-directory
 	 ,(concatenate 'string
 	    "Directory with the source ORG files of the " name " blog."))
        
