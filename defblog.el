@@ -291,7 +291,8 @@ included in any XML feed (RSS or Atom).  The value may be
 	 ,(concatenate 'string
 	    "Target directory for publishable files of the " name " blog."))
        
-       (when (boundp ',gen-directory-var) (makunbound ',gen-directory-var))
+       (when (boundp ',gen-directory-var)
+	 (makunbound ',gen-directory-var))
        (defvar ,gen-directory-var
 	   ,(cond
 	      (generated-directory generated-directory)
@@ -330,14 +331,22 @@ included in any XML feed (RSS or Atom).  The value may be
        ;; this macro expansion.
 
        (defun ,overall-setup-fn (properties)
-	 (message "Setting up defblog temp structures")
-	 
-	 (defblog/table-setup-fn properties ,gen-directory-var ,source-directory-var
-				  ,file-plists-hash ,category-plists-hash
-				  #'(lambda (x) (setf ,category-tags x))
-				  #'(lambda () ,category-tags)
-				  #'(lambda (x) (setf ,last-blog-update x)))
-	 (,state-dump-fn)
+	 (message "Ensuring clean temporary directories...")
+	 (ensure-ready-work-dir ,publish-directory-var)
+	 (dolist (subdir +defblog/scratch-subdirectories+)
+	   (ensure-ready-work-dir (concatenate 'string
+				    ,gen-directory-var subdir "/")))
+	 (message "Ensuring clean temporary directories...done")
+
+	 (message "Setting up defblog temp structures...")
+	 (defblog/table-setup-fn properties
+	     ,gen-directory-var ,source-directory-var
+	     ,file-plists-hash ,category-plists-hash
+	     #'(lambda (x) (setf ,category-tags x))
+	     #'(lambda () ,category-tags)
+	     #'(lambda (x) (setf ,last-blog-update x)))
+	 (message "Setting up defblog temp structures...done")
+	 ;; (,state-dump-fn)
 	 )
 
        (defun ,overall-cleanup-fn (properties)
@@ -548,6 +557,24 @@ included in any XML feed (RSS or Atom).  The value may be
 	       org-publish-project-alist)
 	 (push (cons ,name overall-target) org-publish-project-alist))
        (message "Defined blog %s; use org-publish to generate" ',name))))
+
+;;; =================================================================
+;;; Preparing and cleaning temporary directories.
+
+(defun ensure-ready-work-dir (pathname)
+  "Prepare the temporary directory PATHNAME for blog generation."
+  
+  ;; If the directory already exists, remove its contents.
+  (when (file-directory-p pathname)
+    (dolist (item (directory-files pathname t))
+      (cond
+	((string-match "/\\.\\.?$" item) nil) ;; . or .. --- skip
+	((file-directory-p item) (delete-directory item t))
+	(t (delete-file item)))))
+
+  ;; If the directory does not exist at all, create it.
+  (unless (file-directory-p pathname)
+    (make-directory pathname t)))
 
 ;;; =================================================================
 ;;; Preparing the hash tables and reference lists at the start of a
@@ -813,10 +840,6 @@ surrounding directories."
 These files should be written to the gen-statics subdirectory of 
 the temporary files workspace.
 - PROPERTIES is as specified in org-publish."
-
-  (let ((gen-basedir (concatenate 'string gen-directory "gen-statics/")))
-    (when (file-directory-p gen-basedir) (delete-directory gen-basedir t))
-    (make-directory gen-basedir t))
   
   (when generate-rss
     (defblog/write-rss properties source-directory gen-directory category-tags
@@ -976,7 +999,8 @@ structures of the blog artifacts.
 
 	     (cat-out-dir (concatenate 'string gen-basedir category-tag "/")))
 
-	(unless (file-directory-p cat-out-dir) (make-directory cat-out-dir))
+	(unless (file-directory-p cat-out-dir)
+	  (make-directory cat-out-dir))
 
 	(let ((rss-buf (find-file-noselect (concatenate 'string 
 					     cat-out-dir "rss.xml"))))
@@ -1109,7 +1133,8 @@ itself."
 
 	     (cat-out-dir (concatenate 'string gen-basedir category-tag "/")))
 
-	(unless (file-directory-p cat-out-dir) (make-directory cat-out-dir))
+	(unless (file-directory-p cat-out-dir)
+	  (make-directory cat-out-dir))
 	
 	(let ((atom-buf (find-file-noselect (concatenate 'string 
 					     cat-out-dir "atom.xml"))))
@@ -1197,10 +1222,12 @@ itself."
 ;;; =================================================================
 ;;; Copying posts into the tmp space
 
-(defun defblog/posts-prep (cat-list cat-plist-hash gen-directory source-directory)
+(defun defblog/posts-prep (cat-list cat-plist-hash
+			   gen-directory source-directory)
   (dolist (cat cat-list)
     (let ((cat-src-dir (concatenate 'string source-directory cat "/"))
-	  (cat-tmp-dir (concatenate 'string gen-directory "posts/" cat "/")))
+	  (cat-tmp-dir (concatenate 'string
+			 gen-directory "posts/" cat "/")))
       (when (file-directory-p cat-tmp-dir)
 	(delete-directory cat-tmp-dir t))
       (make-directory cat-tmp-dir t)
@@ -1217,9 +1244,10 @@ itself."
 ;;; Building indices of posts in the tmp space
 
 (defun defblog/cat-indices-prep (cat-list-getter cat-plist-hash
-				 file-plist-hash gen-directory source-directory
+				 file-plist-hash gen-directory
+				 source-directory
 				 cat-indices-style-link)
-  "For the \"-cat-indices\" publish targets, generate category index ORG files.
+  "For the \"-cat-indices\" targets, generate category index ORG files.
 These files should be written to the cat-indices subdirectory of the
 temporary files workspace."
   ;; (message "Called defblog/cat-indices-prep %s" (funcall cat-list-getter))
@@ -1227,7 +1255,8 @@ temporary files workspace."
   ;; For each category, and for its source and scratch directories,
   (dolist (cat (funcall cat-list-getter))
     (let* ((cat-src-dir (concatenate 'string source-directory cat "/"))
-	   (dest-dir (concatenate 'string gen-directory "cat-indices/" cat "/"))
+	   (dest-dir (concatenate 'string
+		       gen-directory "cat-indices/" cat "/"))
 	   (dest-org (concatenate 'string dest-dir "index.org"))
 
 	   (cat-plist (gethash (intern cat) cat-plist-hash))
@@ -1337,6 +1366,10 @@ temporary files workspace."
     ((null xs) nil)
     ((funcall f (car xs)) (cons (car xs) (filter f (cdr xs))))
     (t (filter f (cdr xs)))))
+
+(defconst +defblog/scratch-subdirectories+
+  '("cat-indices" "gen-statics" "posts")
+  "Scratch space subdirectories used internally by DEFBLOG.")
 
 (defconst +web-announcement-date+
   (encode-time (list 20 56 14 6 8 1991 nil nil nil)) ;; August 6, 1991, 14:56:20 GMT
