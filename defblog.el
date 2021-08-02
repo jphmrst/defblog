@@ -11,9 +11,17 @@
 ;;
 ;; TODO Add a way to create the ORG for an arbitrary page.
 ;;
-;; TODO Add a sunset duration for posts on front page.
+;; FRONT PAGE STUFF:
 ;;
-;; TODO Generalize the COPY-FILE in DEFBLOG/POSTS-PREP.
+;; - TODO Add a copy-to-scratch step for the front page.
+;;
+;; - TODO Abstract out the copy-to-scratch function for the front
+;; - page.
+;;
+;; - TODO Add magic comments to the front page copy function: for
+;; - including recent posts, etc.
+;;
+;; --- TODO Add a sunset duration for posts on front page.
 ;;
 ;; TODO Generalize how the title is formed for category index pages in
 ;; DEFBLOG/CAT-INDICES-PREP.
@@ -26,6 +34,7 @@
                            published-directory generated-directory
                            retain-published-directory
                            retain-generated-directories
+                           (post-copy-function 'copy-file)
                            ;;
                            css-style-rel-path
                            frontpage-css-style-rel-path
@@ -408,7 +417,7 @@ included in any XML feed (RSS or Atom).  The value may be
 
        (defun ,posts-prep-fn (properties)
          (defblog/posts-prep ,category-tags ,category-plists-hash
-           ,gen-directory-var ,source-directory-var))
+           ,gen-directory-var ,source-directory-var #',post-copy-function))
 
        ;; Register this blog with org-project.
        (let ((cleaned-alist (alist-remove-string-key
@@ -1238,7 +1247,8 @@ itself."
 ;;; Copying posts into the tmp space
 
 (defun defblog/posts-prep (cat-list cat-plist-hash
-                           gen-directory source-directory)
+                           gen-directory source-directory
+                           post-copy-function)
   (dolist (cat cat-list)
     (let ((cat-src-dir (concatenate 'string source-directory cat "/"))
           (cat-tmp-dir (concatenate 'string
@@ -1251,9 +1261,7 @@ itself."
         (let ((cat-src-file (concatenate 'string cat-src-dir file))
               (cat-tmp-file (concatenate 'string cat-tmp-dir file)))
           ;; (message "%s %s" cat-src-file cat-tmp-file)
-          (copy-file cat-src-file cat-tmp-file)
-          ;; TODO This function into configuration
-          )))))
+          (funcall post-copy-function cat-src-file cat-tmp-file))))))
 
 ;;; =================================================================
 ;;; Building indices of posts in the tmp space
