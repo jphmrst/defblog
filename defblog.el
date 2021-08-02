@@ -3,13 +3,8 @@
 
 ;;; Commentary:
 
-;;; Code:
 ;;
 ;; TODO XML sitemap entry for front page.
-;;
-;; TODO Add a way to create the ORG for the front page.
-;;
-;; TODO Add a way to create the ORG for an arbitrary page.
 ;;
 ;; FRONT PAGE STUFF:
 ;;
@@ -18,12 +13,17 @@
 ;; - TODO Abstract out the copy-to-scratch function for the front
 ;; - page.
 ;;
-;; - TODO Add magic comments to the front page copy function: for
+;; - TODO Write a front page copy function with magic comments: for
 ;; - including recent posts, etc.
 ;;
 ;; --- TODO Add a sunset duration for posts on front page.
 ;;
-;; TODO Ignore index.org source files in the category directories.
+;; TODO Add a way to create the ORG for an arbitrary page.
+;;
+;; TODO Ignore/warn about index.org source files in the category
+;; directories.
+
+;;; Code:
 
 (cl-defmacro defblog (name source-directory blog-title
                            &key
