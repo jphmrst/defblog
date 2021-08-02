@@ -30,7 +30,6 @@
 (cl-defmacro defblog (name base-directory blog-title 
 			   &key
 			   blog-url blog-desc
-			   (src-subdir "src/") ;; To go away
 			   published-directory generated-directory
 			   ;;
 			   css-style-rel-path
@@ -85,8 +84,6 @@ Optional parameters:
 - BLOG-URL (respectively BLOG-DESC) gives the URL for the top of 
 this blog (human-facing description of the web site).  The URL
 is required when generating most of the XML artifacts.
-- SRC-SUBDIR is the local path from BASE-DIRECTORY to the 
-subdirectory for the blog source.
 - CSS-STYLE-SUBPATH, the local path from the BASE-DIRECTORY to 
 default CSS stylesheet for the blog.
 - FRONTPAGE-CSS-STYLE-REL-PATH, PAGE-CSS-STYLE-REL-PATH,
@@ -291,8 +288,7 @@ included in any XML feed (RSS or Atom).  The value may be
 
        (when (boundp ',source-directory-var)
 	 (makunbound ',source-directory-var))
-       (defvar ,source-directory-var
-	   ,(concatenate 'string base-directory src-subdir)
+       (defvar ,source-directory-var ,base-directory
 	 ,(concatenate 'string
 	    "Directory with the source ORG files of the " name " blog."))
        
