@@ -158,8 +158,6 @@ included in any XML feed (RSS or Atom).  The value may be
 	;; Names of global constants associated with this blog.  Each
 	;; of these names is also associated with a DEFVAR in the
 	;; macro expansion.
-	(basedir (intern (concatenate 'string
-			   "+defblog/" name "/basedir+")))
 	(source-directory-var (intern (concatenate 'string
 			       "+defblog/" name "/src-basedir+")))
 	(publish-directory-var (intern (concatenate 'string
@@ -281,10 +279,6 @@ included in any XML feed (RSS or Atom).  The value may be
 
        ;; DEFVARs corresponding to the constants defined for this
        ;; blog.
-
-       (when (boundp ',basedir) (makunbound ',basedir))
-       (defvar ,basedir ,base-directory
-	 ,(concatenate 'string "Base work directory for the " name " blog."))
 
        (when (boundp ',source-directory-var)
 	 (makunbound ',source-directory-var))
