@@ -6,10 +6,12 @@
 ;;
 ;; TODO XML sitemap entry for front page.
 ;;
+;; TODO Create an overall blog property list, pass it to
+;; FRONT-COPY-FUNCTION.
+;;
 ;; FRONT PAGE STUFF:
 ;;
-;; - TODO Write a front page copy function with magic comments: for
-;; - including recent posts, etc.
+;; - TODO Add operations to PAGE-COPY-WITH-SUBSTITUTIONS.
 ;;
 ;; --- TODO Add a sunset duration for posts on front page.
 ;;
@@ -356,9 +358,13 @@ included in any XML feed (RSS or Atom).  The value may be
 
          ;; The setup for the front page is just to copy it in to its
          ;; scratch area.
-         (funcall #',front-copy-function
-                  (concatenate 'string ,source-directory-var "index.org")
-                  (concatenate 'string ,gen-directory-var "front/index.org")))
+         (let ((source-org (concatenate 'string
+                             ,source-directory-var "index.org")))
+           (funcall #',front-copy-function
+                    source-org
+                    (concatenate 'string ,gen-directory-var "front/index.org")
+                    nil
+                    (gethash (intern source-org) ,file-plists-hash))))
 
        (defun ,overall-cleanup-fn (properties)
 
@@ -1405,6 +1411,42 @@ temporary files workspace."
   (encode-time (list 20 56 14 6 8 1991 nil nil nil)) ;; August 6, 1991, 14:56:20 GMT
   "The date when Sir Tim announced the invention of the World-Wide Web.
 Used as an earliest-possible post- or updated-date for pages and posts.")
+
+;;; =================================================================
+;;; Various functions available as arguments to DEFBLOG.
+
+(defun page-copy-verbatim (src-path dest-path site-properties page-properties)
+  "Function which only copies in page source.
+Can be used as the :FRONT-COPY-FUNCTION argument."
+  (copy-file src-path dest-path))
+
+(defun page-copy-with-substitutions (src-path dest-path
+                                     site-properties page-properties)
+  "Page source copying function which injects text for certain Org comments.
+Can be used as the :FRONT-COPY-FUNCTION argument."
+
+  ;; First read in the source file as a list of lines.
+  (let ((source-lines (with-temp-buffer
+                        (insert-file-contents src-path)
+                        (split-string (buffer-string) "\n" t))))
+
+    ;; Now prepare the output file.
+    (let ((dest-buffer (find-file-noselect dest-path)))
+      (message "Opening %s for writing" dest-path)
+      (with-current-buffer dest-buffer
+        (erase-buffer)
+
+        ;; Line-by-line, perform substitutions in the original, write
+        ;; to the destination.
+        (dolist (line source-lines)
+          (message "About to write %s %s" (type-of line) line)
+          (cond
+            ;; Default case: just insert the line
+            (t (insert line "\n"))))
+        (message "Wrote lines")
+
+        (save-buffer 0))
+      (kill-buffer dest-buffer))))
 
 (provide 'defblog)
 ;;; defblog ends here
