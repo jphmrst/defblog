@@ -31,7 +31,6 @@
 			   &key
 			   blog-url blog-desc
 			   (src-subdir "src/") ;; To go away
-			   (pub-subdir "pub/") ;; To go away
 			   published-directory generated-directory
 			   ;;
 			   css-style-rel-path
@@ -86,10 +85,8 @@ Optional parameters:
 - BLOG-URL (respectively BLOG-DESC) gives the URL for the top of 
 this blog (human-facing description of the web site).  The URL
 is required when generating most of the XML artifacts.
-- SRC-SUBDIR and PUB-SUBDIR are the local paths from
-BASE-DIRECTORY to the respective subdirectories for the blog
-source, the HTML-output (\"published\") area, and the temporary
-scratch workspace.
+- SRC-SUBDIR is the local path from BASE-DIRECTORY to the 
+subdirectory for the blog source.
 - CSS-STYLE-SUBPATH, the local path from the BASE-DIRECTORY to 
 default CSS stylesheet for the blog.
 - FRONTPAGE-CSS-STYLE-REL-PATH, PAGE-CSS-STYLE-REL-PATH,
@@ -121,11 +118,17 @@ included in any XML feed (RSS or Atom).  The value may be
   ;; Check fatal combinations of present/missing arguments.
   (unless (file-directory-p base-directory)
     (error "Expected a directory for :base-directory %s" base-directory))
+  
   (when (or generate-rss generate-atom)
     (unless blog-url
-      (error "Generating RSS/Atom feed requires BLOG-URL"))) 
+      (error "Generating RSS/Atom feed requires BLOG-URL")))
+  
   (unless (or (null upload) (eq upload :rsync))
     (error "Unrecognized value for upload: %s" upload))
+
+  (when (and (null upload) (null published-directory))
+    (error
+     "No upload method specified, but no local :PUBLISHED-DIRECTORY given"))
  
   ;; Refinements to the given arguments.
   (unless (string-match "/$" base-directory)
@@ -286,7 +289,8 @@ included in any XML feed (RSS or Atom).  The value may be
        (defvar ,basedir ,base-directory
 	 ,(concatenate 'string "Base work directory for the " name " blog."))
 
-       (when (boundp ',source-directory-var) (makunbound ',source-directory-var))
+       (when (boundp ',source-directory-var)
+	 (makunbound ',source-directory-var))
        (defvar ,source-directory-var
 	   ,(concatenate 'string base-directory src-subdir)
 	 ,(concatenate 'string
@@ -295,7 +299,9 @@ included in any XML feed (RSS or Atom).  The value may be
        (when (boundp ',publish-directory-var)
 	 (makunbound ',publish-directory-var))
        (defvar ,publish-directory-var
-	   ,(concatenate 'string base-directory pub-subdir)
+	   ,(cond
+	      (generated-directory published-directory)
+	      (t `(concatenate 'string ,system-tmp-dir-var "pub/")))
 	 ,(concatenate 'string
 	    "Target directory for publishable files of the " name " blog."))
        
@@ -358,7 +364,7 @@ included in any XML feed (RSS or Atom).  The value may be
 			      (list (concatenate 'string
 				      "--rsh=" rsync-shell)))
 			  ,@(when rsync-delete-excluded `("--delete-excluded"))
-			  ,(concatenate 'string base-directory pub-subdir)
+			  ,publish-directory-var
 			  ,rsync-dest)
 	    (message "Uploading...done"))
 	   ((null ,upload)
