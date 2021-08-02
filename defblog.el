@@ -7,9 +7,6 @@
 ;;
 ;; TODO XML sitemap entry for root page.
 ;;
-;; TODO Centralize creating/emptying the published and temporary
-;; spaces.
-;;
 ;; TODO Add a way to create the ORG for the front page.
 ;;
 ;; TODO Add a way to create the ORG for an arbitrary page.
@@ -27,6 +24,8 @@
 			   &key
 			   blog-url blog-desc
 			   published-directory generated-directory
+			   retain-published-directory
+			   retain-generated-directories
 			   ;;
 			   css-style-rel-path
 			   frontpage-css-style-rel-path
@@ -331,6 +330,7 @@ included in any XML feed (RSS or Atom).  The value may be
        ;; this macro expansion.
 
        (defun ,overall-setup-fn (properties)
+
 	 (message "Ensuring clean temporary directories...")
 	 (ensure-ready-work-dir ,publish-directory-var)
 	 (dolist (subdir +defblog/scratch-subdirectories+)
@@ -350,6 +350,21 @@ included in any XML feed (RSS or Atom).  The value may be
 	 )
 
        (defun ,overall-cleanup-fn (properties)
+
+	 (unless ,retain-published-directory
+	   (message "Removing pub directory...")
+	   (delete-directory ,publish-directory-var t)
+	   (message "Removing pub directory...done"))
+
+	 (unless ,retain-generated-directories
+	   (message "Removing scratch directories...")
+	   (dolist (subdir +defblog/scratch-subdirectories+)
+	     (let ((fullpath (concatenate 'string
+			       ,gen-directory-var subdir "/")))
+	       (when (file-directory-p fullpath)
+		 (delete-directory fullpath t))))
+	   (message "Removing scratch directories...done"))
+
 	 (cond
 	   ((eq ,upload :rsync)
 	    (message "Uploading...")
