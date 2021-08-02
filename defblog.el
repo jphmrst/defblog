@@ -32,7 +32,6 @@
 			   blog-url blog-desc
 			   (src-subdir "src/") ;; To go away
 			   (pub-subdir "pub/") ;; To go away
-			   (gen-subdir "gen/") ;; To go away
 			   published-directory generated-directory
 			   ;;
 			   css-style-rel-path
@@ -87,7 +86,7 @@ Optional parameters:
 - BLOG-URL (respectively BLOG-DESC) gives the URL for the top of 
 this blog (human-facing description of the web site).  The URL
 is required when generating most of the XML artifacts.
-- SRC-SUBDIR, PUB-SUBDIR and GEN-SUBDIR are the local paths from
+- SRC-SUBDIR and PUB-SUBDIR are the local paths from
 BASE-DIRECTORY to the respective subdirectories for the blog
 source, the HTML-output (\"published\") area, and the temporary
 scratch workspace.
@@ -161,11 +160,6 @@ included in any XML feed (RSS or Atom).  The value may be
 	;; macro expansion.
 	(basedir (intern (concatenate 'string
 			   "+defblog/" name "/basedir+")))
-	(use-system-tmpspace-var (intern (concatenate 'string
-					   "+defblog/" name
-					   "/use-system-tmpspace+")))
-	(system-tmpspace-var (intern (concatenate 'string
-				       "+defblog/" name "/system-tmpspace+")))
 	(source-directory-var (intern (concatenate 'string
 			       "+defblog/" name "/src-basedir+")))
 	(publish-directory-var (intern (concatenate 'string
@@ -180,6 +174,8 @@ included in any XML feed (RSS or Atom).  The value may be
 				       "+defblog/" name "/gen-statics+")))
 	(last-blog-update (intern (concatenate 'string
 				      "+defblog/" name "/last-blog-update+")))
+	(system-tmp-dir-var (intern (concatenate 'string
+				      "+defblog/" name "/system-tmp-dir+")))
 
 	;; Names of functions associated with this blog.  Each of
 	;; these names is associated with a DEFUN in the macro
@@ -197,6 +193,8 @@ included in any XML feed (RSS or Atom).  The value may be
 				      "defblog/" name "/overall-cleanup")))
 	(state-dump-fn (intern (concatenate 'string
 				 "defblog/" name "/state-dump")))
+	(system-tmp-dir-rm-fn (intern (concatenate 'string
+					"defblog/" name "/rm-system-tmp-dir")))
 
 	;; Sunset time for feed entries.
 	(feed-entry-sunset-pred
@@ -263,26 +261,30 @@ included in any XML feed (RSS or Atom).  The value may be
 	    "Hashtable for holding properties of the categories of the "
 	    name " blog."))
 
+       ;; Managing temporary directories.  Since the Org source
+       ;; directories in ORG-PUBLISH-PROJECT-ALIST are hardcoded, we
+       ;; need to fix a directory in /tmp when calling defblog.
+       (when (boundp ',system-tmp-dir-var)
+	 (when ,system-tmp-dir-var
+	   (delete-directory ,system-tmp-dir-var t))
+	 (makunbound ',system-tmp-dir-var))
+       (defvar ,system-tmp-dir-var
+	   ,(when (or (null published-directory) (null generated-directory))
+	      `(make-temp-file "defblog-" t)))
+       (unless (string-match "/$" ,system-tmp-dir-var)
+	 (setf ,system-tmp-dir-var
+	       (concatenate 'string ,system-tmp-dir-var "/")))
+       (defun ,system-tmp-dir-rm-fn ()
+	 (when ,system-tmp-dir-var
+	   (delete-directory ,system-tmp-dir-var t)))
+       (add-hook 'kill-emacs-hook ',system-tmp-dir-rm-fn)
+
        ;; DEFVARs corresponding to the constants defined for this
        ;; blog.
 
        (when (boundp ',basedir) (makunbound ',basedir))
        (defvar ,basedir ,base-directory
 	 ,(concatenate 'string "Base work directory for the " name " blog."))
-
-       (when (boundp ',use-system-tmpspace-var)
-	 (makunbound ',use-system-tmpspace-var))
-       (defvar ,use-system-tmpspace-var ,(or (null published-directory)
-					     (null generated-directory))
-	 ,(concatenate 'string
-	    "Flag specifying whether we need a system tmp directory for the "
-	    name " blog."))
-
-       (when (boundp ',system-tmpspace-var)
-	 (makunbound ',system-tmpspace-var))
-       (defvar ,system-tmpspace-var nil
-	 ,(concatenate 'string
-	    "Set to the in-use system tmp directory for the " name " blog."))
 
        (when (boundp ',source-directory-var) (makunbound ',source-directory-var))
        (defvar ,source-directory-var
@@ -299,27 +301,29 @@ included in any XML feed (RSS or Atom).  The value may be
        
        (when (boundp ',gen-directory-var) (makunbound ',gen-directory-var))
        (defvar ,gen-directory-var
-	   ,(concatenate 'string base-directory gen-subdir)
+	   ,(cond
+	      (generated-directory generated-directory)
+	      (t system-tmp-dir-var))
 	 ,(concatenate 'string
 	    "Scratch space directory for the " name " blog."))
        
        (when (boundp ',get-posts-directory-var)
 	 (makunbound ',get-posts-directory-var))
        (defvar ,get-posts-directory-var
-	   ,(concatenate 'string base-directory gen-subdir "posts/")
+	   (concatenate 'string ,gen-directory-var "posts/")
 	 ,(concatenate 'string
 	    "Scratch space directory for copying over posts for the " name " blog."))
        
        (when (boundp ',gen-cat-indices-directory-var) (makunbound ',gen-cat-indices-directory-var))
        (defvar ,gen-cat-indices-directory-var 
-	   ,(concatenate 'string base-directory gen-subdir "cat-indices/")
+	   (concatenate 'string ,gen-directory-var "cat-indices/")
 	 ,(concatenate 'string
 	    "Scratch space area for generating category index files for the "
 	    name " blog."))
        
        (when (boundp ',gen-statics-directory) (makunbound ',gen-statics-directory))
        (defvar ,gen-statics-directory 
-	   ,(concatenate 'string base-directory gen-subdir "gen-statics/")
+	   (concatenate 'string ,gen-directory-var "gen-statics/")
 	 ,(concatenate 'string
 	    "Scratch space area for generating XML files for the "
 	    name " blog."))
@@ -335,10 +339,6 @@ included in any XML feed (RSS or Atom).  The value may be
 
        (defun ,overall-setup-fn (properties)
 	 (message "Setting up defblog temp structures")
-
-	 (when ,use-system-tmpspace-var
-	   (setf ,system-tmpspace-var (make-temp-file "defblog" t))
-	   )
 	 
 	 (defblog/table-setup-fn properties ,gen-directory-var ,source-directory-var
 				  ,file-plists-hash ,category-plists-hash
@@ -368,8 +368,6 @@ included in any XML feed (RSS or Atom).  The value may be
 	 (clrhash ,file-plists-hash)
 	 (clrhash ,category-plists-hash)
 	 (setf ,category-tags nil)
-	 (when ,use-system-tmpspace-var
-	   (delete-directory ,system-tmpspace-var t))
 	 (message "Cleaning up defblog temp structures...done"))
 
        (defun ,state-dump-fn ()
