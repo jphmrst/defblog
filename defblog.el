@@ -7,10 +7,6 @@
 ;;
 ;; TODO XML sitemap entry for root page.
 ;;
-;; TODO Not base-directory, but source-directory.  Then optional pub-
-;; and gen-areas, but no *-subdir arguments.  If not defined, then
-;; these should create a /tmp space.
-;;
 ;; TODO Centralize creating/emptying the published and temporary
 ;; spaces.
 ;;
