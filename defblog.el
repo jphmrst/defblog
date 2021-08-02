@@ -5,7 +5,7 @@
 
 ;;; Code:
 ;;
-;; TODO XML sitemap entry for root page.
+;; TODO XML sitemap entry for front page.
 ;;
 ;; TODO Add a way to create the ORG for the front page.
 ;;
@@ -23,9 +23,6 @@
 ;;
 ;; --- TODO Add a sunset duration for posts on front page.
 ;;
-;; TODO Generalize how the title is formed for category index pages in
-;; DEFBLOG/CAT-INDICES-PREP.
-;;
 ;; TODO Ignore index.org source files in the category directories.
 
 (cl-defmacro defblog (name source-directory blog-title
@@ -35,6 +32,10 @@
                            retain-published-directory
                            retain-generated-directories
                            (post-copy-function 'copy-file)
+                           (cat-index-title-fn
+                            '(lambda (cat-plist blog-title)
+                              (concatenate 'string
+                                blog-title ": " (plist-get cat-plist :title))))
                            ;;
                            css-style-rel-path
                            frontpage-css-style-rel-path
@@ -377,14 +378,17 @@ included in any XML feed (RSS or Atom).  The value may be
          (cond
            ((eq ,upload :rsync)
             (message "Uploading...")
-            (call-process "rsync" nil "*org-publish-rsync*" nil
-                          ,@rsync-options
-                          ,@(when rsync-shell
-                              (list (concatenate 'string
-                                      "--rsh=" rsync-shell)))
-                          ,@(when rsync-delete-excluded `("--delete-excluded"))
-                          ,publish-directory-var
-                          ,rsync-dest)
+            (let ((args
+                   (list "rsync" nil "*org-publish-rsync*" nil
+                         ,@rsync-options
+                         ,@(when rsync-shell
+                             (list (concatenate 'string
+                                     "--rsh=" rsync-shell)))
+                         ,@(when rsync-delete-excluded `("--delete-excluded"))
+                         ,publish-directory-var
+                         ,rsync-dest)))
+              ;; (message "Invoking rsync:\n  %s" args)
+              (apply #'call-process args))
             (message "Uploading...done"))
            ((null ,upload)
             (message "Uploading not selected")))
@@ -401,9 +405,10 @@ included in any XML feed (RSS or Atom).  The value may be
 
        (defun ,cat-indices-prep-fn (properties)
          (defblog/cat-indices-prep #'(lambda () ,category-tags)
+             ,blog-title
              ,category-plists-hash ,file-plists-hash
              ,gen-directory-var ,source-directory-var
-             ,category-index-css-style-rel-path))
+             ,category-index-css-style-rel-path #',cat-index-title-fn))
 
        (defun ,gen-statics-prep-fn (properties)
          (defblog/gen-statics-prep properties ,source-directory-var
@@ -1266,10 +1271,11 @@ itself."
 ;;; =================================================================
 ;;; Building indices of posts in the tmp space
 
-(defun defblog/cat-indices-prep (cat-list-getter cat-plist-hash
-                                 file-plist-hash gen-directory
+(defun defblog/cat-indices-prep (cat-list-getter blog-title
+                                 cat-plist-hash file-plist-hash gen-directory
                                  source-directory
-                                 cat-indices-style-link)
+                                 cat-indices-style-link
+                                 cat-index-title-fn)
   "For the \"-cat-indices\" targets, generate category index ORG files.
 These files should be written to the cat-indices subdirectory of the
 temporary files workspace."
@@ -1309,9 +1315,8 @@ temporary files workspace."
           (erase-buffer)
 
           (insert "#+TITLE: " ; TODO Generalize the title.
-                  cat-title
-                  " [JM's website]\n"
-                  "#+html_head:  "
+                  (funcall cat-index-title-fn cat-plist blog-title)
+                  "\n#+html_head:  "
                   "<link rel=stylesheet type=\"text/css\" href=\""
                   cat-indices-style-link
                   "\"/>"
