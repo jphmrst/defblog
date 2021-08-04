@@ -3,7 +3,7 @@
 
 ;;; Commentary:
 
-;; TODO XML sitemap entry for front page.
+;; TODO Do not close source file buffers which were already open.
 ;;
 ;; TODO Add a way to create the ORG for an arbitrary page.
 ;;
@@ -932,14 +932,17 @@ structures of the blog artifacts."
          "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
          "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n")
 
+        ;; First process the zero-depth files.
         (dolist (file-plist (hash-table-values file-plist-hash))
           (when (zerop (plist-get file-plist :depth))
+            ;; (message "Processing zero-depth %s" (plist-get file-plist :path))
             (let* ((page-url
-                    (replace-regexp-in-string "\\.org$" ".html"
-                                              (concatenate 'string
-                                                site-url
-                                                (plist-get file-plist
-                                                           :bare)))))
+                    (replace-regexp-in-string "/index.html$" "/"
+                     (replace-regexp-in-string "\\.org$" ".html"
+                                               (concatenate 'string
+                                                 site-url
+                                                 (plist-get file-plist
+                                                            :bare))))))
               (defblog/write-xml-sitemap-entry page-url
                   (plist-get file-plist :date) (plist-get file-plist :updated)
                   (plist-get file-plist :change-freq) nil default-change-freq
@@ -1198,12 +1201,13 @@ itself."
 
           (dolist (plist file-plists)
             ;; Only add things from the last (let's say) five years.
-            (message "- Considering post for Atom feed: %s (%s)"
-                     (plist-get plist :bare)
-                     (format-time-string "%d %b %Y"
-                                         (plist-get plist :mod)))
+
+            ;; (message "- Considering post for Atom feed: %s (%s)"
+            ;;          (plist-get plist :bare)
+            ;;          (format-time-string "%d %b %Y"
+            ;;                              (plist-get plist :mod)))
             (when (funcall feed-entry-sunset-pred (plist-get plist :mod))
-              (message "  Added")
+              ;; (message "  Added")
               (with-current-buffer all-buf
                 (defblog/write-atom-for-plist plist cat-properties
                   default-author-name))
@@ -1449,8 +1453,8 @@ Can be used as the :FRONT-COPY-FUNCTION argument."
                                              site-properties page-properties)
   "Page source copying function which injects text for certain Org comments.
 Can be used as the :FRONT-COPY-FUNCTION argument."
-  (message "Called page-copy-with-substitutions for %s"
-           (plist-get page-properties :path))
+  ;; (message "Called page-copy-with-substitutions for %s"
+  ;;          (plist-get page-properties :path))
 
   ;; First read in the source file as a list of lines.
   (let ((source-lines (with-temp-buffer
@@ -1459,7 +1463,7 @@ Can be used as the :FRONT-COPY-FUNCTION argument."
 
     ;; Now prepare the output file.
     (let ((dest-buffer (find-file-noselect dest-path)))
-      (message "Opening %s for writing" dest-path)
+      ;; (message "Opening %s for writing" dest-path)
       (with-current-buffer dest-buffer
         (erase-buffer)
 
@@ -1474,8 +1478,8 @@ Can be used as the :FRONT-COPY-FUNCTION argument."
                                       earliest format-string numbered)
                  (defblog/page-subst-recent-posts-args src-path)
 
-               (message "Earliest: %s %s" earliest
-                        (format-time-string +rfc-3339-time-format+ earliest))
+               ;; (message "Earliest: %s %s" earliest
+               ;;          (format-time-string +rfc-3339-time-format+ earliest))
                (let* ((all-posts (plist-get site-properties
                                             :sorted-file-plists))
                       (selected
@@ -1492,9 +1496,9 @@ Can be used as the :FRONT-COPY-FUNCTION argument."
                                    (make-string indent (char-from-name "SPACE"))
                                    (if numbered "1. " "- ")))
                                 (t (if numbered "1. " "- ")))))
-                 (message "- Selected posts: %s" selected)
+                 ;; (message "- Selected posts: %s" selected)
                  (dolist (post selected)
-                   (message "- Writing for post: %s" post)
+                   ;; (message "- Writing for post: %s" post)
                    (insert prefix)
                    (defblog/insert-formatted-page-plist format-string
                        site-properties post)
@@ -1506,7 +1510,7 @@ Can be used as the :FRONT-COPY-FUNCTION argument."
             ;; Default case: just insert the line
             (t (message "- Regular line")
                (insert line "\n"))))
-        (message "Wrote lines")
+        ;; (message "Wrote lines")
 
         (save-buffer 0))
       (kill-buffer dest-buffer))))
@@ -1528,15 +1532,15 @@ the last update to the post.
 - %Y is replaced with the year (including century) of the last update to
 the post.
 and %% is replaced by a single %."
-  (message "Called defblog/insert-formatted-page-plist for %s" page-properties)
+  ;; (message "Called defblog/insert-formatted-page-plist for %s" page-properties)
   (let ((next-char 0)
         (end-char (length format-string)))
     (while (< next-char end-char)
       (let ((c (aref format-string next-char)))
-        (message "Processing character %d %s" next-char (char-to-string c))
+        ;; (message "Processing character %d %s" next-char (char-to-string c))
         (case c
           ((?%)
-           (message "- Is %%")
+           ;; (message "- Is %%")
            (incf next-char)
            (unless (< next-char end-char)
              (error "Trailing %% in format string \"%s\"" format-string))
@@ -1552,7 +1556,8 @@ and %% is replaced by a single %."
                 (when cat (setf url (concatenate 'string url cat "/")))
                 (setf url (concatenate 'string url bare))
                 (insert "[[" url "][")
-                (message "- Inserting URL %s" url)))
+                ;; (message "- Inserting URL %s" url)
+                ))
              ((?Z) (message "- Is %%Z")
               (insert "]]"))
              ((?t) (message "- Is %%t")
@@ -1642,7 +1647,7 @@ and %% is replaced by a single %."
               (cond
                 ;; Use a number of days before today if it is given.
                 (max-age-days
-                 (message "Using max-age-days %s" max-age-days)
+                 ;; (message "Using max-age-days %s" max-age-days)
                  (encode-time
                   (decoded-time-add
                    (decode-time (current-time))
@@ -1651,18 +1656,18 @@ and %% is replaced by a single %."
                                       :month 0 :year 0 :zone 0))))
                 ;; Otherwise use a number of months.
                 (max-age-months
-                 (message "Using max-age-months %s" max-age-months)
+                 ;; (message "Using max-age-months %s" max-age-months)
                  (its (encode-time
                        (decoded-time-add
                         (decode-time (current-time))
                         (make-decoded-time :second 0 :minute 0 :hour 0 :day 0
                                            :month (- max-age-months)
                                            :year 0 :zone 0))))
-                 (message "- %s" (it))
+                 ;; (message "- %s" (it))
                  (it))
                 ;; Otherwise use a number of years.
                 (max-age-years
-                 (message "Using max-age-years %s" max-age-years)
+                 ;; (message "Using max-age-years %s" max-age-years)
                  (its
                   (encode-time
                    (decoded-time-add
@@ -1670,17 +1675,17 @@ and %% is replaced by a single %."
                     (make-decoded-time :second 0 :minute 0 :hour 0
                                        :day 0 :month 0
                                        :year (- max-age-years) :zone 0))))
-                 (message "- %s" (it))
+                 ;; (message "- %s" (it))
                  (it))
                 ;; Otherwise parse a date string with an absolute
                 ;; earliest point.
                 (earliest-string
-                 (message "Using earliest-string")
+                 ;; (message "Using earliest-string")
                  (parse-time-string earliest-string))
                 ;; Otherwise use the date of the announcement of the
                 ;; web.
                 (t
-                 (message "Using +web-announcement-date+")
+                 ;; (message "Using +web-announcement-date+")
                  +web-announcement-date+)))
 
              (result (list max indent newlines final-newline earliest
