@@ -6,9 +6,6 @@
 ;;
 ;; TODO XML sitemap entry for front page.
 ;;
-;; TODO Create an overall blog property list, pass it to
-;; FRONT-COPY-FUNCTION.
-;;
 ;; FRONT PAGE STUFF:
 ;;
 ;; - TODO Add operations to PAGE-COPY-WITH-SUBSTITUTIONS.
@@ -21,6 +18,11 @@
 ;; directories.
 
 ;;; Code:
+
+(defmacro if-show-state-dump (&rest forms)
+  "Debugging flag"
+  `(progn ,@forms) ;; nil
+  )
 
 (cl-defmacro defblog (name source-directory blog-title
                            &key
@@ -127,7 +129,7 @@ included in any XML feed (RSS or Atom).  The value may be
     (error "Unrecognized value for upload: %s" upload))
 
   (when (and (null upload) (null published-directory))
-    (error
+    (warn
      "No upload method specified, but no local :PUBLISHED-DIRECTORY given"))
 
   ;; Refinements to the given arguments.
@@ -150,6 +152,8 @@ included in any XML feed (RSS or Atom).  The value may be
         ;; updated before each time the blog HTML is built.  Each of
         ;; these names is associated with a DEFVAR in the macro
         ;; expansion.
+        (site-plist-var (intern (concatenate 'string
+                                  "+defblog/" name "/site-plist+")))
         (file-plists-hash (intern (concatenate 'string
                                     "+defblog/" name "/file-plists-hash+")))
         (category-tags (intern (concatenate 'string
@@ -243,6 +247,10 @@ included in any XML feed (RSS or Atom).  The value may be
 
        ;; DEFVARs corresponding to the stateful components of this
        ;; blog.
+
+       (when (boundp ',site-plist-var) (makunbound ',site-plist-var))
+       (defvar ,site-plist-var nil
+         ,(concatenate 'string "General property list for the " name " blog."))
 
        (when (boundp ',file-plists-hash) (makunbound ',file-plists-hash))
        (defvar ,file-plists-hash (make-hash-table :test 'eq)
@@ -352,9 +360,11 @@ included in any XML feed (RSS or Atom).  The value may be
              ,file-plists-hash ,category-plists-hash
              #'(lambda (x) (setf ,category-tags x))
              #'(lambda () ,category-tags)
-             #'(lambda (x) (setf ,last-blog-update x)))
+             #'(lambda (x) (setf ,last-blog-update x))
+             #'(lambda (x) (setf ,site-plist-var x))
+             ,blog-title ,blog-desc ,blog-url)
          (message "Setting up defblog temp structures...done")
-         ;; (,state-dump-fn)
+         (,state-dump-fn)
 
          ;; The setup for the front page is just to copy it in to its
          ;; scratch area.
@@ -363,7 +373,7 @@ included in any XML feed (RSS or Atom).  The value may be
            (funcall #',front-copy-function
                     source-org
                     (concatenate 'string ,gen-directory-var "front/index.org")
-                    nil
+                    ,site-plist-var
                     (gethash (intern source-org) ,file-plists-hash))))
 
        (defun ,overall-cleanup-fn (properties)
@@ -407,8 +417,9 @@ included in any XML feed (RSS or Atom).  The value may be
          (message "Cleaning up defblog temp structures...done"))
 
        (defun ,state-dump-fn ()
-         (defblog/state-dump ,file-plists-hash
-             ,category-tags ,category-plists-hash))
+         (if-show-state-dump
+          (defblog/state-dump ,site-plist-var ,file-plists-hash
+              ,category-tags ,category-plists-hash)))
 
        (defun ,cat-indices-prep-fn (properties)
          (defblog/cat-indices-prep #'(lambda () ,category-tags)
@@ -616,12 +627,13 @@ included in any XML feed (RSS or Atom).  The value may be
 ;;; =================================================================
 ;;; Preparing the hash tables and reference lists at the start of a
 ;;; blog build.
-(defun defblog/table-setup-fn (blog-plist gen-directory source-directory
+(defun defblog/table-setup-fn (properties gen-directory source-directory
                                file-plist-hash category-plist-hash
                                cat-list-setter cat-list-getter
-                               last-post-setter)
+                               last-post-setter site-plist-setter
+                               site-title site-desc site-url)
   "Reset the global structures associated with a blog.
-- BLOG-PLIST is the property list provided from ORG-PUBLISH.
+- PROPERTIES is the property list provided from ORG-PUBLISH.
 - GEN-DIRECTORY is the root directory of the temporary files area
 - FILE-PLIST-HASH is the hashtable from paths to ORG files, to the plist of
 information extracted from that file.
@@ -634,8 +646,15 @@ the category list global variable for this blog."
     category-plist-hash)
   (defblog/add-table-summary-data file-plist-hash category-plist-hash
     last-post-setter)
-  ;; TODO --- clear out the published and temporary spaces
-  )
+  (funcall site-plist-setter
+           (list :file-plists-hash file-plist-hash
+                 :cat-plists-hash category-plist-hash
+                 :sorted-file-plists
+                 (sort (hash-table-values file-plist-hash)
+                       #'(lambda (x y)
+                           (time-less-p (plist-get y :mod)
+                                        (plist-get x :mod))))
+                 :title site-title :desc site-desc :url site-url)))
 
 ;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ;;; Managing the file-plist hashtable.
@@ -652,12 +671,12 @@ the category list global variable for this blog."
   (let ((top-contents (directory-files source-directory)))
     (dolist (item top-contents)
       (let ((item-fullpath (concatenate 'string source-directory item)))
-        (defblog/process-file-for-hash item 0 item-fullpath file-plist-hash
+        (defblog/process-file-for-hash item nil 0 item-fullpath file-plist-hash
                                        category-plist-hash))))
   ;; (message "Finished property hash reset")
   )
 
-(defun defblog/process-file-for-hash (bare-name depth full-path
+(defun defblog/process-file-for-hash (bare-name cat-tag depth full-path
                                       file-plist-hash category-plist-hash)
   "Recursive function for populating the properties hash from a given file."
   ;; (message "Processing %s" full-path)
@@ -671,13 +690,13 @@ the category list global variable for this blog."
      (let ((dir-contents (directory-files full-path)))
        (dolist (dir-item dir-contents)
          (let ((dir-item-fullpath (concatenate 'string full-path dir-item)))
-           (defblog/process-file-for-hash dir-item (+ 1 depth)
+           (defblog/process-file-for-hash dir-item bare-name (+ 1 depth)
                dir-item-fullpath file-plist-hash category-plist-hash)))))
 
     ;; If it's an ORGMODE file, pull and cache its properties.
     ((string-match "\\.org$" bare-name)
      (multiple-value-bind (plist posted-date update-date)
-         (defblog/build-file-plist bare-name full-path depth)
+         (defblog/build-file-plist bare-name cat-tag full-path depth)
 
        ;; (message "- Caching %s --> %s" full-path plist)
        (puthash (intern full-path) plist file-plist-hash)
@@ -686,7 +705,7 @@ the category list global variable for this blog."
     ;; (t (message "- No action for %s" full-path))
     ))))
 
-(defun defblog/build-file-plist (bare-file path depth)
+(defun defblog/build-file-plist (bare-file cat-tag path depth)
   "Extract a list of the properties we need from the file at the given PATH.
 BARE-FILE and PATH should refer to the same file; the former excludes all
 surrounding directories."
@@ -701,12 +720,13 @@ surrounding directories."
           ;; (message "  keyvals %s" keyvals)
           (kill-buffer buf)
           (multiple-value-bind (result posted-date update-date)
-              (defblog/format-orgprops-plist bare-file path depth keyvals)
+              (defblog/format-orgprops-plist bare-file cat-tag
+                path depth keyvals)
 
             ;; (message "  result %s" result)
             (values result posted-date update-date)))))))
 
-(defun defblog/format-orgprops-plist (bare-file path depth keyvals)
+(defun defblog/format-orgprops-plist (bare-file cat-tag path depth keyvals)
   "Given a key-values list, set up a plist for a file path."
   (let* ((bare-date (assoc "DATE" keyvals))
          (bare-updated (assoc "UPDATED" keyvals))
@@ -728,6 +748,7 @@ surrounding directories."
     (values (list :bare bare-file :path path :depth depth
                   :title (nth 1 (assoc "TITLE" keyvals))
                   :desc (nth 1 (assoc "DESCRIPTION" keyvals))
+                  :cat cat-tag
                   :author-name (nth 1 (assoc "AUTHOR_NAME" keyvals))
                   :date post-date :updated post-updated
                   :mod post-mod
@@ -1367,13 +1388,15 @@ temporary files workspace."
                   (insert (format-time-string "%B %d, %Y/" updated)))
                 (when (or date updated) (insert "."))
                 (insert "\n"))))
-          (save-buffer 0))))))
+          (save-buffer 0))
+        (kill-buffer index-buffer)))))
 
 ;;; =================================================================
 ;;; Debugging utilities
 
-(defun defblog/state-dump (file-plists-hash cat-list cat-plists-hash)
+(defun defblog/state-dump (site-plist file-plists-hash cat-list cat-plists-hash)
   (message "--------------------")
+  (message "Site properties: %s\n" site-plist)
   (dolist (file (hash-table-keys file-plists-hash))
     (message "%s\n ==> %s\n" file (gethash file file-plists-hash)))
   (message "\nCategories: %s\n" cat-list)
@@ -1403,6 +1426,13 @@ temporary files workspace."
     ((funcall f (car xs)) (cons (car xs) (filter f (cdr xs))))
     (t (filter f (cdr xs)))))
 
+(defun take (n xs)
+  "Classical take N function on a list XS."
+  (cond
+    ((zerop n) nil)
+    ((null xs) nil)
+    (t (cons (car xs) (take (- n 1) (cdr xs))))))
+
 (defconst +defblog/scratch-subdirectories+
   '("cat-indices" "gen-statics" "posts" "front")
   "Scratch space subdirectories used internally by DEFBLOG.")
@@ -1415,15 +1445,18 @@ Used as an earliest-possible post- or updated-date for pages and posts.")
 ;;; =================================================================
 ;;; Various functions available as arguments to DEFBLOG.
 
-(defun page-copy-verbatim (src-path dest-path site-properties page-properties)
+(defun defblog/page-copy-verbatim (src-path dest-path
+                                   site-properties page-properties)
   "Function which only copies in page source.
 Can be used as the :FRONT-COPY-FUNCTION argument."
   (copy-file src-path dest-path))
 
-(defun page-copy-with-substitutions (src-path dest-path
-                                     site-properties page-properties)
+(defun defblog/page-copy-with-substitutions (src-path dest-path
+                                             site-properties page-properties)
   "Page source copying function which injects text for certain Org comments.
 Can be used as the :FRONT-COPY-FUNCTION argument."
+  (message "Called page-copy-with-substitutions for %s"
+           (plist-get page-properties :path))
 
   ;; First read in the source file as a list of lines.
   (let ((source-lines (with-temp-buffer
@@ -1439,14 +1472,102 @@ Can be used as the :FRONT-COPY-FUNCTION argument."
         ;; Line-by-line, perform substitutions in the original, write
         ;; to the destination.
         (dolist (line source-lines)
-          (message "About to write %s %s" (type-of line) line)
           (cond
+
+            ;; Insert the last few new posts
+            ((string-match "^# RECENT-POST-LINKS\\(.*\\)$"
+                           line)
+             (destructuring-bind (&key (max 10) (indent 0) (newlines t)
+                                       (earliest +web-announcement-date+)
+                                       (format-string "%L%T%Z") (numbered t)
+                                       (final-newline nil))
+                 (match-string 2)
+
+               (let* ((all-posts (plist-get site-properties
+                                            :sorted-file-plists))
+                      (selected (cond
+                                  ((numberp max) (take max all-posts))
+                                  (t all-posts)))
+
+                      (prefix (cond
+                                ((stringp indent) indent)
+                                ((numberp indent)
+                                 (concatenate 'string
+                                   (make-string indent (char-from-name "SPACE"))
+                                   (if numbered "1. " "- ")))
+                                (t (if numbered "1. " "- ")))))
+                 (message "- Selected posts: %s" selected)
+                 (dolist (post selected)
+                   (message "- Writing for post: %s" post)
+                   (insert prefix)
+                   (defblog/insert-formatted-page-plist format-string
+                       site-properties post)
+                   (when newlines (insert "\n")))
+
+                 (when (and final-newline (not newlines))
+                   (insert "\n")))))
+
             ;; Default case: just insert the line
-            (t (insert line "\n"))))
+            (t (message "- Regular line")
+               (insert line "\n"))))
         (message "Wrote lines")
 
         (save-buffer 0))
       (kill-buffer dest-buffer))))
+
+(defun defblog/insert-formatted-page-plist (format-string site-properties
+                                            page-properties)
+  "Format a POST property list according to the FORMAT-STRING.
+As with other instances of format strings, the percent (%) character is special:
+- %L is replaced with the opening of a link to the post.
+- %Z is replaced with the closing of a link to the post.
+- %t is replaced with the title of the post.
+- %T is replaced with the title of the post, capitalizing the first letter if
+it is not already capitalized.
+- %d is replaced with the description of the post.
+and %% is replaced by a single %."
+  (message "Called defblog/insert-formatted-page-plist for %s" page-properties)
+  (let ((next-char 0)
+        (end-char (length format-string)))
+    (while (< next-char end-char)
+      (let ((c (aref format-string next-char)))
+        (message "Processing character %d %s" next-char (char-to-string c))
+        (case c
+          ((?%)
+           (message "- Is %%")
+           (incf next-char)
+           (unless (< next-char end-char)
+             (error "Trailing %% in format string \"%s\"" format-string))
+           (case (aref format-string next-char)
+             ((?L) (message "- Is %%L")
+              (let* ((url (plist-get site-properties :url))
+                     (cat (plist-get page-properties :cat))
+                     (bare (replace-regexp-in-string
+                            "\\.org$" ".html"
+                            (plist-get page-properties :bare))))
+                (unless (string-match "/$" url)
+                  (setf url (concatenate 'string url "/")))
+                (when cat (setf url (concatenate 'string url cat "/")))
+                (setf url (concatenate 'string url bare))
+                (insert "[[" url "][")
+                (message "- Inserting URL %s" url)))
+             ((?Z) (message "- Is %%Z")
+              (insert "]]"))
+             ((?t) (message "- Is %%t")
+              (insert (plist-get page-properties :title)))
+             ((?T) (message "- Is %%T")
+              (let ((title (plist-get page-properties :title)))
+                     (when (and title (> (length title) 0))
+                       (let ((first (seq-elt title 0))
+                             (rest (seq-drop title 1)))
+                         (insert (char-to-string (capitalize first)) rest)))))
+             ((?d) (message "- Is %%d")
+              (insert (plist-get page-properties :desc)))
+             (otherwise
+              (error "Unrecognized character '%s' in format string \"%s\""
+                     (char-to-string c) format-string))))
+          (otherwise (insert (char-to-string c)))))
+      (incf next-char))))
 
 (provide 'defblog)
 ;;; defblog ends here
