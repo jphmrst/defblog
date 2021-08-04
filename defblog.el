@@ -3,10 +3,6 @@
 
 ;;; Commentary:
 
-;; TODO Add arguments for the various switches in
-;; PAGE-COPY-WITH-SUBSTITUTIONS.  Will need to be properties in the
-;; file property header.
-;;
 ;; TODO XML sitemap entry for front page.
 ;;
 ;; TODO Add a way to create the ORG for an arbitrary page.
@@ -15,6 +11,7 @@
 ;; directories.
 
 ;;; Code:
+(require 'anaphora-anywhere)
 
 (defmacro if-show-state-dump (&rest forms)
   "Debugging flag"
@@ -1471,15 +1468,14 @@ Can be used as the :FRONT-COPY-FUNCTION argument."
         (dolist (line source-lines)
           (cond
 
-            ;; Insert the last few new posts
-            ((string-match "^# RECENT-POST-LINKS\\(.*\\)$"
-                           line)
-             (let ((max 3) (indent 0) (newlines t)
-                   (earliest +web-announcement-date+)
-                   (format-string "%L%T%Z") (numbered t)
-                   (final-newline nil))
-               ;; (match-string 2)
+            ;; Insert the last few new posts.
+            ((string-match "^# RECENT-POST-LINKS\\(.*\\)$" line)
+             (destructuring-bind (max indent newlines final-newline
+                                      earliest format-string numbered)
+                 (defblog/page-subst-recent-posts-args src-path)
 
+               (message "Earliest: %s %s" earliest
+                        (format-time-string +rfc-3339-time-format+ earliest))
                (let* ((all-posts (plist-get site-properties
                                             :sorted-file-plists))
                       (selected
@@ -1525,6 +1521,12 @@ As with other instances of format strings, the percent (%) character is special:
 - %T is replaced with the title of the post, capitalizing the first letter if
 it is not already capitalized.
 - %d is replaced with the description of the post.
+- %M is replaced with the full name of the month of the last update to
+the post.
+- %D is replaced with the number of the day of month (space-padded) of
+the last update to the post.
+- %Y is replaced with the year (including century) of the last update to
+the post.
 and %% is replaced by a single %."
   (message "Called defblog/insert-formatted-page-plist for %s" page-properties)
   (let ((next-char 0)
@@ -1563,11 +1565,128 @@ and %% is replaced by a single %."
                          (insert (char-to-string (capitalize first)) rest)))))
              ((?d) (message "- Is %%d")
               (insert (plist-get page-properties :desc)))
+             ((?M) (message "- Is %%M")
+              (insert (format-time-string "%B"
+                                          (plist-get page-properties :mod))))
+             ((?D) (message "- Is %%D")
+              (insert (format-time-string "%e"
+                                          (plist-get page-properties :mod))))
+             ((?Y) (message "- Is %%Y")
+              (insert (format-time-string "%Y"
+                                          (plist-get page-properties :mod))))
              (otherwise
               (error "Unrecognized character '%s' in format string \"%s\""
                      (char-to-string c) format-string))))
           (otherwise (insert (char-to-string c)))))
       (incf next-char))))
+
+(defun defblog/page-subst-recent-posts-args (src-path)
+  (let ((buf (find-file-noselect src-path)))
+    (with-current-buffer buf
+      (let* ((parsed-buffer (org-element-parse-buffer 'greater-element))
+             (keyvals (org-element-map parsed-buffer '(keyword)
+                        #'defblog/kwdpair))
+
+             (max (when (its (nth 1 (assoc "PAGE_SUBST_POSTS_MAX" keyvals)))
+                    (string-to-number (it))))
+             (indent (cond
+                       ((its (nth 1 (assoc "PAGE_SUBST_POSTS_INDENT"
+                                           keyvals)))
+                        (cond
+                          ((string-match "^[0-9]+$" (it))
+                           (string-to-number (it)))
+                          ((string= "nil" (it)) nil)
+                          (t (It))))
+                       (t 0)))
+             (newlines (cond
+                         ((its (nth 1 (assoc "PAGE_SUBST_POSTS_NEWLINES"
+                                                keyvals)))
+                          (not (string= (it) "nil")))
+                         (t t)))
+             (final-newline (cond
+                              ((its (nth 1 (assoc
+                                            "PAGE_SUBST_POSTS_FINAL_NEWLINE"
+                                            keyvals)))
+                               (not (string= (it) "nil")))
+                              (t nil)))
+             (format-string (cond
+                              ((its
+                                (nth 1 (assoc "PAGE_SUBST_POSTS_FORMAT_STRING"
+                                              keyvals)))
+                               (it))
+                              (t "%L%T%Z (%M %D, %Y)")))
+             (numbered (cond
+                         ((its (nth 1 (assoc "PAGE_SUBST_POSTS_NUMBERED"
+                                             keyvals)))
+                          (not (string= (it) "nil")))
+                         (t nil)))
+
+             (earliest-string (nth 1 (assoc "PAGE_SUBST_POSTS_EARLIEST"
+                                            keyvals)))
+             (max-age-days
+              (when (its (nth 1 (assoc "PAGE_SUBST_POSTS_MAX_AGE_DAYS"
+                                       keyvals)))
+                (string-to-number (it))))
+             (max-age-months
+              (when (its (nth 1 (assoc "PAGE_SUBST_POSTS_MAX_AGE_MONTHS"
+                                       keyvals)))
+                (string-to-number (it))))
+             (max-age-years
+              (when (its (nth 1 (assoc "PAGE_SUBST_POSTS_MAX_AGE_YEARS"
+                                       keyvals)))
+                (string-to-number (it))))
+
+             ;; Work out the earliest last-modified date/time for
+             ;; which we would actually include a post.
+             (earliest
+              (cond
+                ;; Use a number of days before today if it is given.
+                (max-age-days
+                 (message "Using max-age-days %s" max-age-days)
+                 (encode-time
+                  (decoded-time-add
+                   (decode-time (current-time))
+                   (make-decoded-time :second 0 :minute 0 :hour 0
+                                      :day (- max-age-days)
+                                      :month 0 :year 0 :zone 0))))
+                ;; Otherwise use a number of months.
+                (max-age-months
+                 (message "Using max-age-months %s" max-age-months)
+                 (its (encode-time
+                       (decoded-time-add
+                        (decode-time (current-time))
+                        (make-decoded-time :second 0 :minute 0 :hour 0 :day 0
+                                           :month (- max-age-months)
+                                           :year 0 :zone 0))))
+                 (message "- %s" (it))
+                 (it))
+                ;; Otherwise use a number of years.
+                (max-age-years
+                 (message "Using max-age-years %s" max-age-years)
+                 (its
+                  (encode-time
+                   (decoded-time-add
+                    (decode-time (current-time))
+                    (make-decoded-time :second 0 :minute 0 :hour 0
+                                       :day 0 :month 0
+                                       :year (- max-age-years) :zone 0))))
+                 (message "- %s" (it))
+                 (it))
+                ;; Otherwise parse a date string with an absolute
+                ;; earliest point.
+                (earliest-string
+                 (message "Using earliest-string")
+                 (parse-time-string earliest-string))
+                ;; Otherwise use the date of the announcement of the
+                ;; web.
+                (t
+                 (message "Using +web-announcement-date+")
+                 +web-announcement-date+)))
+
+             (result (list max indent newlines final-newline earliest
+                           format-string numbered)))
+        (kill-buffer buf)
+        result))))
 
 (provide 'defblog)
 ;;; defblog ends here
