@@ -3,14 +3,11 @@
 
 ;;; Commentary:
 
+;; TODO Add arguments for the various switches in
+;; PAGE-COPY-WITH-SUBSTITUTIONS.  Will need to be properties in the
+;; file property header.
 ;;
 ;; TODO XML sitemap entry for front page.
-;;
-;; FRONT PAGE STUFF:
-;;
-;; - TODO Add operations to PAGE-COPY-WITH-SUBSTITUTIONS.
-;;
-;; --- TODO Add a sunset duration for posts on front page.
 ;;
 ;; TODO Add a way to create the ORG for an arbitrary page.
 ;;
@@ -1477,17 +1474,20 @@ Can be used as the :FRONT-COPY-FUNCTION argument."
             ;; Insert the last few new posts
             ((string-match "^# RECENT-POST-LINKS\\(.*\\)$"
                            line)
-             (destructuring-bind (&key (max 10) (indent 0) (newlines t)
-                                       (earliest +web-announcement-date+)
-                                       (format-string "%L%T%Z") (numbered t)
-                                       (final-newline nil))
-                 (match-string 2)
+             (let ((max 3) (indent 0) (newlines t)
+                   (earliest +web-announcement-date+)
+                   (format-string "%L%T%Z") (numbered t)
+                   (final-newline nil))
+               ;; (match-string 2)
 
                (let* ((all-posts (plist-get site-properties
                                             :sorted-file-plists))
-                      (selected (cond
-                                  ((numberp max) (take max all-posts))
-                                  (t all-posts)))
+                      (selected
+                       (filter #'(lambda (pl)
+                                   (time-less-p earliest (plist-get pl :mod)))
+                               (cond
+                                 ((numberp max) (take max all-posts))
+                                 (t all-posts))))
 
                       (prefix (cond
                                 ((stringp indent) indent)
