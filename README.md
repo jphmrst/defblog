@@ -330,10 +330,32 @@ values:
  - `:change-freq` is the change frequency of the page for the XML
    sitefeed.
 
+The file property list hash table maps *the symbol* whose name is the
+absolute path for a source file, to the property list for that
+page/post.
+
 ### Category property lists and their hash table
 
-FILL IN
+ - `:title` is the human-oriented name for the category.
+ - `:description` is a short text description of the category.
+ - `:tag` is the short tag name, which is also the directory holding
+   the category's files.
+ - `:src-dir` is the absolute path of the subdirectory of the source
+   directory for that category.
+ - `:sitemap-priority` and `:change-freq` are the XML sitemap
+   properties for the category index page.
+ - `:post-files` is a list of the bare (without surrounding
+   directories) source file names of the post files in the category.
+
+The category property list hash table maps *the symbol* whose name is
+the category tag, to the property list for that category.
 
 ### The site property list
 
-FILL IN
+ - `:title` is the name of the web site.
+ - `:desc` is a short text description of the site.
+ - `:url` is the URL of the top level of the site.
+ - `:file-plists-hash` is the file property list hash table
+ - `:cat-plists-hash` is the category property list hash table
+ - `:sorted-file-plists` is a list of file property lists sorted in
+   descending order of last-modified date.
