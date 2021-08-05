@@ -24,8 +24,8 @@
                            published-directory generated-directory
                            retain-published-directory
                            retain-generated-directories
-                           (post-copy-function 'copy-file)
-                           (front-copy-function 'copy-file)
+                           (post-copy-function 'defblog/page-copy-verbatim)
+                           (front-copy-function 'defblog/page-copy-verbatim)
                            (cat-index-title-fn
                             '(lambda (cat-plist blog-title)
                               (concatenate 'string
@@ -49,7 +49,7 @@
                            ;;
                            upload
                            ;;
-                           rsync-dest rsync-shell
+                           rsync-dest rsync-rsh
                            (rsync-options '("-rLptgoD"))
                            (rsync-delete-excluded t)
                            ;;
@@ -117,7 +117,7 @@ included in any XML feed (RSS or Atom).  The value may be
 
   (when (or generate-rss generate-atom)
     (unless blog-url
-      (error "Generating RSS/Atom feed requires BLOG-URL")))
+      (error "Generating an RSS/Atom feed requires BLOG-URL")))
 
   (unless (or (null upload) (eq upload :rsync))
     (error "Unrecognized value for upload: %s" upload))
@@ -392,9 +392,9 @@ included in any XML feed (RSS or Atom).  The value may be
             (let ((args
                    (list "rsync" nil "*org-publish-rsync*" nil
                          ,@rsync-options
-                         ,@(when rsync-shell
+                         ,@(when rsync-rsh
                              (list (concatenate 'string
-                                     "--rsh=" rsync-shell)))
+                                     "--rsh=" rsync-rsh)))
                          ,@(when rsync-delete-excluded `("--delete-excluded"))
                          ,publish-directory-var
                          ,rsync-dest)))
