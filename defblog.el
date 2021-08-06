@@ -3,6 +3,8 @@
 
 ;;; Commentary:
 
+;; TODO Do the right thing with the LINK property.
+;;
 ;; TODO Do not close source file buffers which were already open.
 ;;
 ;; TODO Add a way to create the ORG for an arbitrary page.
