@@ -1603,7 +1603,7 @@ and %% is replaced by a single %."
                           ((string-match "^[0-9]+$" (it))
                            (string-to-number (it)))
                           ((string= "nil" (it)) nil)
-                          (t (It))))
+                          (t (it))))
                        (t 0)))
              (newlines (cond
                          ((its (nth 1 (assoc "PAGE_SUBST_POSTS_NEWLINES"
