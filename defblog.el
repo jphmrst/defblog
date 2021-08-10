@@ -1697,3 +1697,4 @@ and %% is replaced by a single %."
 
 (provide 'defblog)
 ;;; defblog ends here
+
