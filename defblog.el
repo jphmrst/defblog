@@ -3,11 +3,9 @@
 
 ;;; Commentary:
 
-;; TODO Do the right thing with the LINK property.
-;;
 ;; TODO Do not close source file buffers which were already open.
 ;;
-;; TODO Add a way to create the ORG for an arbitrary page.
+;; TODO Add a way to create the ORG for a page/post from scratch.
 ;;
 ;; TODO Ignore/warn about index.org source files in the category
 ;; directories.
@@ -1381,17 +1379,21 @@ temporary files workspace."
                     (title (plist-get prop-list :title))
                     (desc  (plist-get prop-list :desc))
                     (date  (plist-get prop-list :date))
+                    (link  (plist-get prop-list :link))
                     (updated  (plist-get prop-list :updated)))
                 ;; (message "- bare %s title \"%s\" desc \"%s\"" bare title desc)
-                (when bare
+                (when (or link bare)
                   (insert "- @@html:<a href=\""
-                          (replace-regexp-in-string "\\.org$" ".html" bare)
+                          (cond
+                            (link link)
+                            (t (replace-regexp-in-string "\\.org$" ".html"
+                                                         bare)))
                           "\">"))
                 (insert (cond (title title) (t "(untitled)")))
-                (when bare (insert "</a>@@."))
+                (when (or link bare) (insert "</a>@@."))
                 (when desc (insert " " desc))
                 (when date
-                  (insert (format-time-string " /%B %d, %Y/" date)))
+                  (insert (format-time-string " — /%B %d, %Y/" date)))
                 (when updated
                   (cond
                     (date (insert ", /updated "))
@@ -1565,6 +1567,7 @@ and %% is replaced by a single %."
                      (bare (replace-regexp-in-string
                             "\\.org$" ".html"
                             (plist-get page-properties :bare))))
+                (message "LINK %s -> %s" bare link)
                 (cond
                   (link (setf url link))
                   (t
@@ -1572,6 +1575,7 @@ and %% is replaced by a single %."
                      (setf url (concatenate 'string url "/")))
                    (when cat (setf url (concatenate 'string url cat "/")))
                    (setf url (concatenate 'string url bare))))
+                (message "- url is %s" url)
                 (insert "[[" url "][")
                 ;; (message "- Inserting URL %s" url)
                 ))
