@@ -3,6 +3,14 @@
 
 ;;; Commentary:
 
+;; HTACCESS
+;;
+;; - TODO Use the remote-htaccess for the remote destination of the
+;; - htaccess file.
+;;
+;; - TODO Make sure the htaccess file is copied to pub/, and then
+;; - pushed with rsync.
+;;
 ;; TODO Do not close source file buffers which were already open.
 ;;
 ;; TODO Format string for each page list entry in category.txt file
@@ -63,6 +71,9 @@
                            (generate-rss t)
                            (generate-atom t)
                            default-author-name
+                           ;;
+                           (generate-htaccess t)
+                           remote-htaccess
                            ;;
                            feed-entry-sunset)
 
@@ -431,7 +442,7 @@ included in any XML feed (RSS or Atom).  The value may be
            ,file-plists-hash ,category-plists-hash
            ,category-tags ,blog-title ,blog-desc ,blog-url ,last-blog-update
            ,generate-xml-sitemap ,generate-rss ,generate-atom
-           ,default-author-name ,feed-entry-sunset-pred
+           ,generate-htaccess ,default-author-name ,feed-entry-sunset-pred
            (symbol-name ',sitemap-default-change-freq)
            ,sitemap-default-priority))
 
@@ -750,6 +761,8 @@ surrounding directories."
                   :cat cat-tag
                   :author-name (nth 1 (assoc "AUTHOR_NAME" keyvals))
                   :date post-date :updated post-updated
+                  :old-urls (when (its (nth 1 (assoc "OLD_URL" keyvals)))
+                              (split-string (it) " *, *"))
                   :mod post-mod
                   :sitemap-priority priority :change-freq change-freq)
             post-date post-updated)))
@@ -889,7 +902,7 @@ surrounding directories."
                                  file-plist-hash cat-plist-hash
                                  category-tags blog-name blog-desc blog-url
                                  last-update generate-xml-sitemap
-                                 generate-rss generate-atom
+                                 generate-rss generate-atom generate-htaccess
                                  default-author-name feed-entry-sunset-pred
                                  default-change-freq default-priority)
   "Generate XML and other non-ORG/HTML files.
@@ -913,8 +926,43 @@ the temporary files workspace.
 
   (when generate-xml-sitemap
     (defblog/write-xml-sitemap properties gen-directory blog-url
-      file-plist-hash cat-plist-hash default-change-freq default-priority)))
+                               file-plist-hash cat-plist-hash
+                               default-change-freq default-priority))
+
+  (when generate-htaccess
+    (defblog/write-htaccess properties gen-directory blog-url
+                            file-plist-hash cat-plist-hash)))
 
+;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+;;; Generating an HTACCESS file for forwards.
+
+(defun defblog/write-htaccess (properties gen-directory blog-url
+                               file-plist-hash cat-plist-hash)
+  "Write a .htaccess file for URL forwarding."
+  (let ((gen-basedir (concatenate 'string gen-directory "gen-statics/")))
+    (let ((sitemap-buf (find-file-noselect (concatenate 'string
+                                             gen-basedir ".htaccess"))))
+      (with-current-buffer sitemap-buf
+        (erase-buffer)
+
+        (dolist (file-plist (hash-table-values file-plist-hash))
+          (let ((cat (plist-get file-plist :cat))
+                (bare (plist-get file-plist :bare))
+                (old-links (plist-get file-plist :old-urls)))
+            (dolist (old-link old-links)
+              (insert "Redirect "
+                      (replace-regexp-in-string "https?://[^/]+" "" old-link)
+                      " "
+                      blog-url
+                      (cond (cat (concatenate 'string cat "/")) (t ""))
+                      (replace-regexp-in-string
+                       "/index.html$" "/" (replace-regexp-in-string
+                                           "\\.org$" ".html" bare))
+                      "\n"))))
+
+        (save-buffer 0))
+    (kill-buffer sitemap-buf))))
+
 ;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ;;; Generating the XML sitemap
 
