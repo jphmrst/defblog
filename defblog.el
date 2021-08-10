@@ -5,6 +5,9 @@
 
 ;; TODO Do not close source file buffers which were already open.
 ;;
+;; TODO Format string for each page list entry in category.txt file
+;; property.
+;;
 ;; TODO Add a way to create the ORG for a page/post from scratch.
 ;;
 ;; TODO Ignore/warn about index.org source files in the category
