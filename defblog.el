@@ -436,7 +436,8 @@ included in any XML feed (RSS or Atom).  The value may be
 
        (defun ,posts-prep-fn (properties)
          (defblog/posts-prep ,category-tags ,category-plists-hash
-           ,gen-directory-var ,source-directory-var #',post-copy-function))
+           ,gen-directory-var ,source-directory-var #',post-copy-function
+           ,site-plist-var ,file-plists-hash))
 
        ;; Register this blog with org-project.
        (let ((cleaned-alist (alist-remove-string-key
@@ -1280,9 +1281,9 @@ itself."
 ;;; =================================================================
 ;;; Copying posts into the tmp space
 
-(defun defblog/posts-prep (cat-list cat-plist-hash
-                           gen-directory source-directory
-                           post-copy-function)
+(defun defblog/posts-prep (cat-list cat-plist-hash gen-directory
+                           source-directory post-copy-function
+                           site-plist file-plist-hash)
   (dolist (cat cat-list)
     (let ((cat-src-dir (concatenate 'string source-directory cat "/"))
           (cat-tmp-dir (concatenate 'string
@@ -1295,7 +1296,8 @@ itself."
         (let ((cat-src-file (concatenate 'string cat-src-dir file))
               (cat-tmp-file (concatenate 'string cat-tmp-dir file)))
           ;; (message "%s %s" cat-src-file cat-tmp-file)
-          (funcall post-copy-function cat-src-file cat-tmp-file))))))
+          (funcall post-copy-function cat-src-file cat-tmp-file
+                   site-plist (gethash cat-src-file file-plist-hash)))))))
 
 ;;; =================================================================
 ;;; Building indices of posts in the tmp space
