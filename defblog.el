@@ -745,6 +745,7 @@ surrounding directories."
     (values (list :bare bare-file :path path :depth depth
                   :title (nth 1 (assoc "TITLE" keyvals))
                   :desc (nth 1 (assoc "DESCRIPTION" keyvals))
+                  :link (nth 1 (assoc "LINK" keyvals))
                   :cat cat-tag
                   :author-name (nth 1 (assoc "AUTHOR_NAME" keyvals))
                   :date post-date :updated post-updated
@@ -1126,10 +1127,14 @@ structures of the blog artifacts.
          (bare  (plist-get plist :bare))
          (date  (plist-get plist :date))
          (desc  (plist-get plist :desc))
-         (this-link (concatenate 'string
-                      "https://maraist.org/"
-                      (plist-get category-properties :tag) "/"
-                      (replace-regexp-in-string "\\.org$" ".html" bare))))
+         (quick-link  (plist-get plist :link))
+         (this-link (cond
+                      (quick-link quick-link)
+                      (t
+                       (concatenate 'string
+                         "https://maraist.org/"
+                         (plist-get category-properties :tag) "/"
+                         (replace-regexp-in-string "\\.org$" ".html" bare))))))
     (insert "\n    <item>\n")
     (insert "      <title>" (cond (title title) (t "(untitled)")) "</title>\n")
     (insert "      <link>" this-link "</link>\n")
@@ -1253,11 +1258,15 @@ itself."
          (bare (plist-get file-properties :bare))
          (date (plist-get file-properties :date))
          (desc (plist-get file-properties :desc))
+         (link (plist-get file-properties :link))
          (author (plist-get file-properties :author-name))
-         (this-link (concatenate 'string
-                      "https://maraist.org/"
-                      (plist-get category-properties :tag) "/"
-                      (replace-regexp-in-string "\\.org$" ".html" bare))))
+         (this-link (cond
+                      (link link)
+                      (t
+                       (concatenate 'string
+                         "https://maraist.org/"
+                         (plist-get category-properties :tag) "/"
+                         (replace-regexp-in-string "\\.org$" ".html" bare))))))
     (insert "\n  <entry>\n")
     (insert "      <title>" (cond (title title) (t "(untitled)")) "</title>\n")
     (insert "      <link href=\"" this-link "\" />\n")
@@ -1552,13 +1561,17 @@ and %% is replaced by a single %."
              ((?L) (message "- Is %%L")
               (let* ((url (plist-get site-properties :url))
                      (cat (plist-get page-properties :cat))
+                     (link (plist-get page-properties :link))
                      (bare (replace-regexp-in-string
                             "\\.org$" ".html"
                             (plist-get page-properties :bare))))
-                (unless (string-match "/$" url)
-                  (setf url (concatenate 'string url "/")))
-                (when cat (setf url (concatenate 'string url cat "/")))
-                (setf url (concatenate 'string url bare))
+                (cond
+                  (link (setf url link))
+                  (t
+                   (unless (string-match "/$" url)
+                     (setf url (concatenate 'string url "/")))
+                   (when cat (setf url (concatenate 'string url cat "/")))
+                   (setf url (concatenate 'string url bare))))
                 (insert "[[" url "][")
                 ;; (message "- Inserting URL %s" url)
                 ))
