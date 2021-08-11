@@ -8,9 +8,6 @@
 ;; - TODO Use the remote-htaccess for the remote destination of the
 ;; - htaccess file.
 ;;
-;; - TODO Make sure the htaccess file is copied to pub/, and then
-;; - pushed with rsync.
-;;
 ;; TODO Do not close source file buffers which were already open.
 ;;
 ;; TODO Format string for each page list entry in category.txt file
@@ -438,7 +435,7 @@ included in any XML feed (RSS or Atom).  The value may be
 
        (defun ,gen-statics-prep-fn (properties)
          (defblog/gen-statics-prep properties ,source-directory-var
-           ,gen-directory-var
+           ,gen-directory-var ,publish-directory-var
            ,file-plists-hash ,category-plists-hash
            ,category-tags ,blog-title ,blog-desc ,blog-url ,last-blog-update
            ,generate-xml-sitemap ,generate-rss ,generate-atom
@@ -898,7 +895,8 @@ surrounding directories."
 ;;; =================================================================
 ;;; Generating non-ORG/HTML files.
 
-(defun defblog/gen-statics-prep (properties source-directory gen-directory
+(defun defblog/gen-statics-prep (properties source-directory
+                                 gen-directory pub-directory
                                  file-plist-hash cat-plist-hash
                                  category-tags blog-name blog-desc blog-url
                                  last-update generate-xml-sitemap
@@ -930,38 +928,37 @@ the temporary files workspace.
                                default-change-freq default-priority))
 
   (when generate-htaccess
-    (defblog/write-htaccess properties gen-directory blog-url
+    (defblog/write-htaccess properties pub-directory blog-url
                             file-plist-hash cat-plist-hash)))
 
 ;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ;;; Generating an HTACCESS file for forwards.
 
-(defun defblog/write-htaccess (properties gen-directory blog-url
+(defun defblog/write-htaccess (properties pub-directory blog-url
                                file-plist-hash cat-plist-hash)
   "Write a .htaccess file for URL forwarding."
-  (let ((gen-basedir (concatenate 'string gen-directory "gen-statics/")))
-    (let ((sitemap-buf (find-file-noselect (concatenate 'string
-                                             gen-basedir ".htaccess"))))
-      (with-current-buffer sitemap-buf
-        (erase-buffer)
+  (let ((sitemap-buf (find-file-noselect (concatenate 'string
+                                           pub-directory ".htaccess"))))
+    (with-current-buffer sitemap-buf
+      (erase-buffer)
 
-        (dolist (file-plist (hash-table-values file-plist-hash))
-          (let ((cat (plist-get file-plist :cat))
-                (bare (plist-get file-plist :bare))
-                (old-links (plist-get file-plist :old-urls)))
-            (dolist (old-link old-links)
-              (insert "Redirect "
-                      (replace-regexp-in-string "https?://[^/]+" "" old-link)
-                      " "
-                      blog-url
-                      (cond (cat (concatenate 'string cat "/")) (t ""))
-                      (replace-regexp-in-string
-                       "/index.html$" "/" (replace-regexp-in-string
-                                           "\\.org$" ".html" bare))
-                      "\n"))))
+      (dolist (file-plist (hash-table-values file-plist-hash))
+        (let ((cat (plist-get file-plist :cat))
+              (bare (plist-get file-plist :bare))
+              (old-links (plist-get file-plist :old-urls)))
+          (dolist (old-link old-links)
+            (insert "Redirect "
+                    (replace-regexp-in-string "https?://[^/]+" "" old-link)
+                    " "
+                    blog-url
+                    (cond (cat (concatenate 'string cat "/")) (t ""))
+                    (replace-regexp-in-string
+                     "/index.html$" "/" (replace-regexp-in-string
+                                         "\\.org$" ".html" bare))
+                    "\n"))))
 
-        (save-buffer 0))
-    (kill-buffer sitemap-buf))))
+      (save-buffer 0))
+    (kill-buffer sitemap-buf)))
 
 ;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ;;; Generating the XML sitemap
