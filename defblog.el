@@ -6,7 +6,15 @@
 ;; HTACCESS
 ;;
 ;; - TODO Use the remote-htaccess for the remote destination of the
-;; - htaccess file.
+;; - htaccess file.  If defined:
+;;
+;; -- Generate to a gen directory file
+;;
+;; -- Exclude .htaccess from rsync file list
+;;
+;; -- Second call to rsync for the htaccess target
+;;
+;; -- Remove this file in cleanup
 ;;
 ;; TODO Do not close source file buffers which were already open.
 ;;
