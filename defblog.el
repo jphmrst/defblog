@@ -3,7 +3,15 @@
 
 ;;; Commentary:
 
-;; HTACCESS
+;; TODO Do not close source file buffers which were already open.
+;;
+;; TODO Format string for each page list entry in category.txt file
+;; property.
+;;
+;; TODO Write CATEGORY-LINKS and TAG-LINKS pragmas for
+;; DEFBLOG/PAGE-COPY-WITH-SUBSTITUTIONS
+;;
+;; HTACCESS TODOs:
 ;;
 ;; - TODO Use the remote-htaccess for the remote destination of the
 ;; - htaccess file.  If defined:
@@ -15,11 +23,6 @@
 ;; -- Second call to rsync for the htaccess target
 ;;
 ;; -- Remove this file in cleanup
-;;
-;; TODO Do not close source file buffers which were already open.
-;;
-;; TODO Format string for each page list entry in category.txt file
-;; property.
 ;;
 ;; TODO Add a way to create the ORG for a page/post from scratch.
 ;;
@@ -559,7 +562,7 @@ included in any XML feed (RSS or Atom).  The value may be
              (src-statics-entry
               (list :publishing-function 'org-publish-attachment
                     :base-directory ,source-directory-var
-                    :base-extension "html\\|css\\|jpg\\|gif\\|png\\|xml"
+                    :base-extension "html\\|css\\|jpg\\|gif\\|png\\|xml\\|pdf\\|el\\|gz\\|uu"
                     :publishing-directory ,publish-directory-var
                     :recursive t))
 
