@@ -33,7 +33,7 @@
 (require 'anaphora-anywhere)
 
 (defmacro if-show-state-dump (&rest forms)
-  "Debugging flag"
+  "Debugging flag: execute FORMS when debugging."
   `(progn ,@forms) ;; nil
   )
 
@@ -105,6 +105,16 @@ Optional parameters:
 - BLOG-URL (respectively BLOG-DESC) gives the URL for the top of
 this blog (human-facing description of the web site).  The URL
 is required when generating most of the XML artifacts.
+- PUBLISHED-DIRECTORY and GENERATED-DIRECTORY, if given, are used
+as temporary directories in generating the final website.
+GENERATED-DIRECTORY is used to hold various partial images.
+PUBLISHED-DIRECTORY is used to hold the final web site image before
+uploading it to a remote server.  If omitted, space in /tmp/ is
+used for these directories.  Normally the contents of these
+directories is erased after generation; however
+RETAIN-PUBLISHED-DIRECTORY and RETAIN-GENERATED-DIRECTORIES may
+be set to non-null values to keep the directories' contents
+instead.
 - CSS-STYLE-SUBPATH, the local path from the SOURCE-DIRECTORY to
 default CSS stylesheet for the blog.
 - FRONTPAGE-CSS-STYLE-REL-PATH, PAGE-CSS-STYLE-REL-PATH,
@@ -131,7 +141,19 @@ included in any XML feed (RSS or Atom).  The value may be
  2. A Lisp list (passed as arguments to MAKE-DECODED-TIME,
     whose result is used as a sunset bound as above).
  3. A string (passed to PARSE-TIME-STRING, and used as an
-    absolute limit of the earliest date included."
+    absolute limit of the earliest date included.
+- Most Org files in the source directory are copied into the
+temporary space before being generated.  By default, they are
+copied with the function DEFBLOG/PAGE-COPY-VERBATIM, which copies
+a file verbatim.  However any function may be used.  Defblog
+also provides the function DEFBLOG/PAGE-COPY-WITH-SUBSTITUTIONS,
+which expands certain pragmas in Org-mode comments to additional
+content (see that function's documentation for additional
+information).  These copier functions are provided via two
+arguments:
+ 1. POST-COPY-FUNCTION, applied to posts.
+ 2. FRONT-COPY-FUNCTION, applied to the top-level page.
+"
 
   ;; Check fatal combinations of present/missing arguments.
   (unless (file-directory-p source-directory)
