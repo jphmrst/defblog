@@ -24,6 +24,8 @@
 ;;
 ;; -- Remove this file in cleanup
 ;;
+;; - TODO Add a forwards-list argument to defdoc for other forwards.
+;;
 ;; TODO Add a way to create the ORG for a page/post from scratch.
 ;;
 ;; TODO Ignore/warn about index.org source files in the category

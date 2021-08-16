@@ -10,6 +10,9 @@ ORG-PUBLISH).
 Requires Emacs 27.1 or later, specifically for the `make-decoded-time`
 function introduced with that release.
 
+Also requires the `anaphora-anywhere` library [available
+here](https://github.com/jphmrst/anaphora-anywhere).
+
 ## File structure
 
 To use `defblog`, you must structure your Org files as follows:
