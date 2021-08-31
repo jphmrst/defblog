@@ -232,6 +232,8 @@ arguments:
                                        "defblog/" name "/gen-statics-prep")))
         (posts-prep-fn (intern (concatenate 'string
                                  "defblog/" name "/posts-prep")))
+        (pages-prep-fn (intern (concatenate 'string
+                                 "defblog/" name "/pages-prep")))
         (overall-setup-fn (intern (concatenate 'string
                                     "defblog/" name "/overall-setup")))
         (overall-cleanup-fn (intern (concatenate 'string
@@ -482,6 +484,11 @@ arguments:
          (defblog/posts-prep ,category-tags ,category-plists-hash
            ,gen-directory-var ,source-directory-var #',post-copy-function
            ,site-plist-var ,file-plists-hash))
+
+       (defun ,pages-prep-fn (properties)
+         (defblog/pages-prep ,category-tags ,category-plists-hash
+           ,gen-directory-var ,source-directory-var #',post-copy-function
+           ,site-plist-var ,file-plists-hash))
 
        ;; Register this blog with org-project.
        (let ((cleaned-alist (alist-remove-string-key
@@ -529,7 +536,8 @@ arguments:
              ;; But maybe these should really be copied with
              ;; header/footer org-text into scratch area?
              (pages-entry
-              (list :publishing-function 'org-html-publish-to-html
+              (list :preparation-function ',pages-prep-fn
+                    :publishing-function 'org-html-publish-to-html
                     :base-directory ,source-directory-var
                     :publishing-directory ,publish-directory-var
                     :exclude "index.org"
@@ -1390,6 +1398,29 @@ itself."
                    site-plist (gethash cat-src-file file-plist-hash)))))))
 
 ;;; =================================================================
+;;; Copying posts into the tmp space
+
+
+;; TODO To update --- just copied from the posts one.
+(defun defblog/pages-prep (cat-list cat-plist-hash gen-directory
+                           source-directory post-copy-function
+                           site-plist file-plist-hash)
+  (dolist (cat cat-list)
+    (let ((cat-src-dir (concatenate 'string source-directory cat "/"))
+          (cat-tmp-dir (concatenate 'string
+                         gen-directory "posts/" cat "/")))
+      (when (file-directory-p cat-tmp-dir)
+        (delete-directory cat-tmp-dir t))
+      (make-directory cat-tmp-dir t)
+      (dolist (file (plist-get (gethash (intern cat) cat-plist-hash)
+                               :post-files))
+        (let ((cat-src-file (concatenate 'string cat-src-dir file))
+              (cat-tmp-file (concatenate 'string cat-tmp-dir file)))
+          ;; (message "%s %s" cat-src-file cat-tmp-file)
+          (funcall post-copy-function cat-src-file cat-tmp-file
+                   site-plist (gethash cat-src-file file-plist-hash)))))))
+
+;;; =================================================================
 ;;; Building indices of posts in the tmp space
 
 (defun defblog/cat-indices-prep (cat-list-getter blog-title
@@ -1569,6 +1600,21 @@ Can be used as the :FRONT-COPY-FUNCTION argument."
         ;; to the destination.
         (dolist (line source-lines)
           (cond
+
+            ;; Insert the last few new posts.
+            ((string-match "^# CATEGORY-LINKS\\(.*\\)$" line)
+             (insert "# Inserting category links\n")
+             (let ((category-plist-hash
+                    (plist-get site-properties :cat-plists-hash)))
+               (dolist (cat-plist
+                        (sort
+                         (hash-table-values category-plist-hash)
+                         #'(lambda (x y)
+                             (string-lessp (plist-get x :title)
+                                           (plist-get y :title)))))
+                 (let ((tag (plist-get cat-plist :tag))
+                       (title (plist-get cat-plist :title)))
+                   (insert "- [[" tag "/index.html][" title "]]\n")))))
 
             ;; Insert the last few new posts.
             ((string-match "^# RECENT-POST-LINKS\\(.*\\)$" line)
