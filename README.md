@@ -363,7 +363,8 @@ the category tag, to the property list for that category.
  - `:title` is the name of the web site.
  - `:desc` is a short text description of the site.
  - `:url` is the URL of the top level of the site.
- - `:file-plists-hash` is the file property list hash table
- - `:cat-plists-hash` is the category property list hash table
+ - `:file-plists-hash` is the file property list hash table.  Use
+   `hash-table-values` for just the plists.
+ - `:cat-plists-hash` is the category property list hash table.
  - `:sorted-file-plists` is a list of file property lists sorted in
    descending order of last-modified date.

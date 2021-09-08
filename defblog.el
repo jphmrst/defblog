@@ -8,13 +8,19 @@
 ;; TODO Format string for each page list entry in category.txt file
 ;; property.
 ;;
-;; TODO Write CATEGORY-LINKS and TAG-LINKS pragmas for
+;; TODO Add options for CATEGORY-LINKS pragma in
 ;; DEFBLOG/PAGE-COPY-WITH-SUBSTITUTIONS
+;;
+;; TAG TODOs:
+;;
+;; - TODO Receive TAGS property in posts.
+;;
+;; - TODO Write TAG-LINKS pragma for DEFBLOG/PAGE-COPY-WITH-SUBSTITUTIONS.
 ;;
 ;; HTACCESS TODOs:
 ;;
-;; - TODO Use the remote-htaccess for the remote destination of the
-;; - htaccess file.  If defined:
+;; - TODO Use the remote-htaccess argument for the remote destination
+;; - of the htaccess file.  If defined:
 ;;
 ;; -- Generate to a gen directory file
 ;;
@@ -39,6 +45,18 @@
   `(progn ,@forms) ;; nil
   )
 
+(defconst +defblog/debug-level+ 0)
+(defconst +defblog/debug-topics+ '(:control))
+(cl-defmacro debug-msg ((level topic-or-topics) &rest args)
+  (when (and (<= level +defblog/debug-level+)
+             (or (eq topic-or-topics t)
+                 (cl-intersection (cond
+                                    ((symbolp topic-or-topics)
+                                     (list topic-or-topics))
+                                    (t topic-or-topics))
+                                  +defblog/debug-topics+ :test 'eq)))
+    `(message ,@args)))
+
 (cl-defmacro defblog (name source-directory blog-title
                            &key
                            blog-url blog-desc
@@ -46,6 +64,7 @@
                            retain-published-directory
                            retain-generated-directories
                            (post-copy-function 'defblog/page-copy-verbatim)
+                           (page-copy-function 'defblog/page-copy-verbatim)
                            (front-copy-function 'defblog/page-copy-verbatim)
                            (cat-index-title-fn
                             '(lambda (cat-plist blog-title)
@@ -213,6 +232,8 @@ arguments:
                                "+defblog/" name "/tmp-basedir+")))
         (get-posts-directory-var (intern (concatenate 'string
                                  "+defblog/" name "/posts-basedir+")))
+        (get-pages-directory-var (intern (concatenate 'string
+                                 "+defblog/" name "/pages-basedir+")))
         (gen-cat-indices-directory-var (intern (concatenate 'string
                                        "+defblog/" name "/cat-indices+")))
         (gen-statics-directory (intern (concatenate 'string
@@ -247,7 +268,7 @@ arguments:
         (feed-entry-sunset-pred
          (cond
            ((null feed-entry-sunset)
-            ;; (message "feed-entry-sunset-pred (1)")
+            (debug-msg (3 :internal) "feed-entry-sunset-pred (1)")
             `#'(lambda (x) t))
            ((or (integerp feed-entry-sunset)
                 (and (consp feed-entry-sunset)
@@ -259,15 +280,15 @@ arguments:
                      (integerp (cadr feed-entry-sunset))
                      (integerp (caddr feed-entry-sunset))
                      (integerp (cadddr feed-entry-sunset))))
-            ;; (message "feed-entry-sunset-pred (2)")
+            (debug-msg (3 :internal) "feed-entry-sunset-pred (2)")
             `#'(lambda (x)
                  (let ((min (time-subtract (current-time)
                                            ',feed-entry-sunset)))
-                   ;; (message " - Comparing to minimum %s"
-                   ;;       (format-time-string "%d %b %Y" min))
+                   (debug-msg (3 :internal) " - Comparing to minimum %s"
+                              (format-time-string "%d %b %Y" min))
                    (time-less-p min x))))
            ((listp feed-entry-sunset)
-            ;; (message "feed-entry-sunset-pred (3)")
+            (debug-msg (3 :internal) "feed-entry-sunset-pred (3)")
             (let ((bound (mapcar
                           #'(lambda (x) (cond ((null x) 0) (t (- x))))
                           (apply #'make-decoded-time feed-entry-sunset))))
@@ -275,11 +296,11 @@ arguments:
                    (let ((min (encode-time (decoded-time-add
                                             (decode-time (current-time))
                                             ',bound))))
-                     ;; (message " - Comparing to minimum %s"
-                     ;;       (format-time-string "%d %b %Y" min))
+                     (debug-msg (3 :internal) " - Comparing to minimum %s"
+                                (format-time-string "%d %b %Y" min))
                      (time-less-p min x)))))
            ((stringp feed-entry-sunset)
-            ;; (message "feed-entry-sunset-pred (4)")
+            (debug-msg (3 :internal) "feed-entry-sunset-pred (4)")
             (let ((min (parse-time-string feed-entry-sunset)))
               `#'(lambda (x) (time-less-p ',min x))))
            (t (error "Unrecognized value for FEED-ENTRY-SUNSET: %s"
@@ -364,6 +385,13 @@ arguments:
          ,(concatenate 'string
             "Scratch space directory for copying over posts for the " name " blog."))
 
+       (when (boundp ',get-pages-directory-var)
+         (makunbound ',get-pages-directory-var))
+       (defvar ,get-pages-directory-var
+           (concatenate 'string ,gen-directory-var "pages/")
+         ,(concatenate 'string
+            "Scratch space directory for copying non-index top-level pages for the " name " blog."))
+
        (when (boundp ',gen-cat-indices-directory-var) (makunbound ',gen-cat-indices-directory-var))
        (defvar ,gen-cat-indices-directory-var
            (concatenate 'string ,gen-directory-var "cat-indices/")
@@ -389,14 +417,14 @@ arguments:
 
        (defun ,overall-setup-fn (properties)
 
-         (message "Ensuring clean temporary directories...")
+         (debug-msg (0 t) "Ensuring clean temporary directories...")
          (ensure-ready-work-dir ,publish-directory-var)
          (dolist (subdir +defblog/scratch-subdirectories+)
            (ensure-ready-work-dir (concatenate 'string
                                     ,gen-directory-var subdir "/")))
-         (message "Ensuring clean temporary directories...done")
+         (debug-msg (0 t) "Ensuring clean temporary directories...done")
 
-         (message "Setting up defblog temp structures...")
+         (debug-msg (0 t) "Setting up defblog temp structures...")
          (defblog/table-setup-fn properties
              ,gen-directory-var ,source-directory-var
              ,file-plists-hash ,category-plists-hash
@@ -405,7 +433,7 @@ arguments:
              #'(lambda (x) (setf ,last-blog-update x))
              #'(lambda (x) (setf ,site-plist-var x))
              ,blog-title ,blog-desc ,blog-url)
-         (message "Setting up defblog temp structures...done")
+         (debug-msg (0 t) "Setting up defblog temp structures...done")
          (,state-dump-fn)
 
          ;; The setup for the front page is just to copy it in to its
@@ -421,22 +449,22 @@ arguments:
        (defun ,overall-cleanup-fn (properties)
 
          (unless ,retain-published-directory
-           (message "Removing pub directory...")
+           (debug-msg (0 t) "Removing pub directory...")
            (delete-directory ,publish-directory-var t)
-           (message "Removing pub directory...done"))
+           (debug-msg (0 t) "Removing pub directory...done"))
 
          (unless ,retain-generated-directories
-           (message "Removing scratch directories...")
+           (debug-msg (0 t) "Removing scratch directories...")
            (dolist (subdir +defblog/scratch-subdirectories+)
              (let ((fullpath (concatenate 'string
                                ,gen-directory-var subdir "/")))
                (when (file-directory-p fullpath)
                  (delete-directory fullpath t))))
-           (message "Removing scratch directories...done"))
+           (debug-msg (0 t) "Removing scratch directories...done"))
 
          (cond
            ((eq ,upload :rsync)
-            (message "Uploading...")
+            (debug-msg (0 t) "Uploading...")
             (let ((args
                    (list "rsync" nil "*org-publish-rsync*" nil
                          ,@rsync-options
@@ -446,22 +474,22 @@ arguments:
                          ,@(when rsync-delete-excluded `("--delete-excluded"))
                          ,publish-directory-var
                          ,rsync-dest)))
-              ;; (message "Invoking rsync:\n  %s" args)
+              (debug-msg (3 :internal) "Invoking rsync:\n  %s" args)
               (apply #'call-process args))
-            (message "Uploading...done"))
+            (debug-msg (0 t) "Uploading...done"))
            ((null ,upload)
-            (message "Uploading not selected")))
+            (debug-msg (0 t) "Uploading not selected")))
 
-         (message "Cleaning up defblog temp structures...")
+         (debug-msg (0 t) "Cleaning up defblog temp structures...")
          (clrhash ,file-plists-hash)
          (clrhash ,category-plists-hash)
          (setf ,category-tags nil)
-         (message "Cleaning up defblog temp structures...done"))
+         (debug-msg (0 t) "Cleaning up defblog temp structures...done"))
 
        (defun ,state-dump-fn ()
          (if-show-state-dump
           (defblog/state-dump ,site-plist-var ,file-plists-hash
-              ,category-tags ,category-plists-hash)))
+            ,category-tags ,category-plists-hash)))
 
        (defun ,cat-indices-prep-fn (properties)
          (defblog/cat-indices-prep #'(lambda () ,category-tags)
@@ -487,7 +515,7 @@ arguments:
 
        (defun ,pages-prep-fn (properties)
          (defblog/pages-prep ,category-tags ,category-plists-hash
-           ,gen-directory-var ,source-directory-var #',post-copy-function
+           ,gen-directory-var ,source-directory-var #',page-copy-function
            ,site-plist-var ,file-plists-hash))
 
        ;; Register this blog with org-project.
@@ -538,7 +566,7 @@ arguments:
              (pages-entry
               (list :preparation-function ',pages-prep-fn
                     :publishing-function 'org-html-publish-to-html
-                    :base-directory ,source-directory-var
+                    :base-directory ,get-pages-directory-var
                     :publishing-directory ,publish-directory-var
                     :exclude "index.org"
                     :html-postamble
@@ -653,7 +681,7 @@ arguments:
          (push (cons ,(concatenate 'string name "-posts") posts-entry)
                org-publish-project-alist)
          (push (cons ,name overall-target) org-publish-project-alist))
-       (message "Defined blog %s; use org-publish to generate" ',name))))
+       (debug-msg (0 t) "Defined blog %s; use org-publish to generate" ',name))))
 
 ;;; =================================================================
 ;;; Preparing and cleaning temporary directories.
@@ -710,7 +738,7 @@ the category list global variable for this blog."
 
 (defun defblog/fetch-file-plist (path file-plist-hash)
   (let ((result (gethash (intern path) file-plist-hash)))
-    ;; (message "Cached %s --> %s" path result)
+    (debug-msg (3 :internal) "Cached %s --> %s" path result)
     result))
 
 (defun defblog/reset-file-plist-hash (source-directory file-plist-hash
@@ -722,20 +750,20 @@ the category list global variable for this blog."
       (let ((item-fullpath (concatenate 'string source-directory item)))
         (defblog/process-file-for-hash item nil 0 item-fullpath file-plist-hash
                                        category-plist-hash))))
-  ;; (message "Finished property hash reset")
+  (debug-msg (3 :internal) "Finished property hash reset")
   )
 
 (defun defblog/process-file-for-hash (bare-name cat-tag depth full-path
                                       file-plist-hash category-plist-hash)
   "Recursive function for populating the properties hash from a given file."
-  ;; (message "Processing %s" full-path)
+  (debug-msg (3 :internal) "Processing %s" full-path)
   (when (file-directory-p full-path)
       (setf full-path (concatenate 'string full-path "/")))
   (cond
 
     ;; If it's directory, recursively traverse that directory.
     ((and (file-directory-p full-path) (not (string-match "^\\." bare-name)))
-     ;; (message "- Recurring for directory contents")
+     (debug-msg (3 :internal) "- Recurring for directory contents")
      (let ((dir-contents (directory-files full-path)))
        (dolist (dir-item dir-contents)
          (let ((dir-item-fullpath (concatenate 'string full-path dir-item)))
@@ -747,32 +775,32 @@ the category list global variable for this blog."
      (multiple-value-bind (plist posted-date update-date)
          (defblog/build-file-plist bare-name cat-tag full-path depth)
 
-       ;; (message "- Caching %s --> %s" full-path plist)
+       (debug-msg (3 :internal) "- Caching %s --> %s" full-path plist)
        (puthash (intern full-path) plist file-plist-hash)
 
     ;; When debugging we may want to know about this fall-through.
-    ;; (t (message "- No action for %s" full-path))
+    ;; (t (debug-msg (0 t) "- No action for %s" full-path))
     ))))
 
 (defun defblog/build-file-plist (bare-file cat-tag path depth)
   "Extract a list of the properties we need from the file at the given PATH.
 BARE-FILE and PATH should refer to the same file; the former excludes all
 surrounding directories."
-  ;; (message "* Start defblog/build-file-plist %s" path)
+  (debug-msg (3 :internal) "* Start defblog/build-file-plist %s" path)
   (let ((buf (find-file-noselect path)))
     (with-current-buffer buf
       (let ((parsed-buffer
              (org-element-parse-buffer 'greater-element)))
-        ;; (message "  parsed-buffer %s" parsed-buffer)
+        (debug-msg (3 :internal) "  parsed-buffer %s" parsed-buffer)
         (let ((keyvals (org-element-map parsed-buffer '(keyword)
                          #'defblog/kwdpair)))
-          ;; (message "  keyvals %s" keyvals)
+          (debug-msg (3 :internal) "  keyvals %s" keyvals)
           (kill-buffer buf)
           (multiple-value-bind (result posted-date update-date)
               (defblog/format-orgprops-plist bare-file cat-tag
                 path depth keyvals)
 
-            ;; (message "  result %s" result)
+            (debug-msg (3 :internal) "  result %s" result)
             (values result posted-date update-date)))))))
 
 (defun defblog/format-orgprops-plist (bare-file cat-tag path depth keyvals)
@@ -813,21 +841,21 @@ surrounding directories."
 
 (defun defblog/reset-categories-list (source-directory cat-list-setter)
   (let ((category-tag-list nil))
-    ;; (message "srcdir %s" source-directory)
-    ;; (message "items %s" (directory-files source-directory))
+    (debug-msg (3 :internal) "srcdir %s" source-directory)
+    (debug-msg (3 :internal) "items %s" (directory-files source-directory))
 
     ;; Look at each file in the source directory.
     (dolist (item (directory-files source-directory))
-      ;; (message "Checking %s" item)
+      (debug-msg (3 :internal) "Checking %s" item)
 
       ;; We are skipping any dotfiles
       (unless (string-match "^\\." item)
-        ;; (message "- not a dotfile")
+        (debug-msg (3 :internal) "- not a dotfile")
         (let ((cat-dir-path (concatenate 'string source-directory item "/")))
 
           ;; We are also only looking at directories
           (when (file-directory-p cat-dir-path)
-            ;; (message "- is a directory")
+            (debug-msg (3 :internal) "- is a directory")
 
             ;; Make sure there is a category.txt file in this
             ;; directory.
@@ -835,7 +863,7 @@ surrounding directories."
               (when (file-regular-p cat-path)
 
                 ;; Add the tag to the result list
-                ;; (message "- include %s in category list" item)
+                (debug-msg (3 :internal) "- include %s in category list" item)
                 (push item category-tag-list)))))))
 
     (funcall cat-list-setter category-tag-list)))
@@ -875,9 +903,12 @@ surrounding directories."
                         :post-files ,posts-list)))
 
             ;; Store the plist in the hash.
-            ;; (message "%s\n  %s %s\n  %s %s" full-path cat-tag keyvals (intern cat-tag) plist)
+            (debug-msg (3 :internal) "%s\n  %s %s\n  %s %s"
+                       full-path cat-tag keyvals (intern cat-tag) plist)
             (puthash (intern cat-tag) plist category-plist-hash)
-            ;; (message "  %s" (gethash (intern cat-tag) +defblog/maraist/category-plists-hash+))
+            (debug-msg (3 :internal) "  %s"
+                       (gethash (intern cat-tag)
+                                +defblog/maraist/category-plists-hash+))
             ))))))
 
 ;;; =================================================================
@@ -890,7 +921,7 @@ surrounding directories."
 \(category names) to their property list."
   (let ((last-blog-update +web-announcement-date+))
     (dolist (cat (hash-table-keys category-plist-hash))
-      ;; (message "Crossreferencing for category %s" cat)
+      (debug-msg (3 :internal) "Crossreferencing for category %s" cat)
 
       (let* ((cat-plist (gethash cat category-plist-hash))
              (cat-src-dir (plist-get cat-plist :src-dir))
@@ -898,23 +929,23 @@ surrounding directories."
 
              (latest-post +web-announcement-date+)
              (latest-update +web-announcement-date+))
-        ;; (message "- Has plist %s" cat-plist)
+        (debug-msg (3 :internal) "- Has plist %s" cat-plist)
 
         (dolist (post-file cat-post-files)
-          ;; (message "  - For file %s" post-file)
+          (debug-msg (3 :internal) "  - For file %s" post-file)
           (let* ((file-fullpath (concatenate 'string cat-src-dir post-file))
                  (file-plist (gethash (intern file-fullpath) file-plist-hash))
 
                  (file-posted (plist-get file-plist :date))
                  (file-updated (plist-get file-plist :updated)))
-            ;; (message "    %s" file-fullpath)
-            ;; (message "    %s" file-plist)
-            ;; (message "    %s %s" file-posted file-updated)
+            (debug-msg (3 :internal) "    %s" file-fullpath)
+            (debug-msg (3 :internal) "    %s" file-plist)
+            (debug-msg (3 :internal) "    %s %s" file-posted file-updated)
             (when (and (time-less-p latest-post file-posted) file-posted)
-              ;; (message "    Updating latest post time")
+              (debug-msg (3 :internal) "    Updating latest post time")
               (setf latest-post file-posted))
             (when (and file-updated (time-less-p latest-update file-updated))
-              ;; (message "    Updating latest update time")
+              (debug-msg (3 :internal) "    Updating latest update time")
               (setf latest-update file-updated))))
 
         (puthash cat
@@ -1015,7 +1046,7 @@ the temporary files workspace.
 - CATEGORY-TAGS, FILE-PLIST-HASH and CAT-PLIST-HASH are the internal data
 structures of the blog artifacts."
 
-  ;; (message "Generating XML sitemap")
+  (debug-msg (3 :internal) "Generating XML sitemap")
   (let ((gen-basedir (concatenate 'string gen-directory "gen-statics/")))
     (let ((sitemap-buf (find-file-noselect (concatenate 'string
                                              gen-basedir "sitemap.xml"))))
@@ -1028,7 +1059,8 @@ structures of the blog artifacts."
         ;; First process the zero-depth files.
         (dolist (file-plist (hash-table-values file-plist-hash))
           (when (zerop (plist-get file-plist :depth))
-            ;; (message "Processing zero-depth %s" (plist-get file-plist :path))
+            (debug-msg (3 :internal) "Processing zero-depth %s"
+                       (plist-get file-plist :path))
             (let* ((page-url
                     (replace-regexp-in-string "/index.html$" "/"
                      (replace-regexp-in-string "\\.org$" ".html"
@@ -1049,12 +1081,12 @@ structures of the blog artifacts."
                 nil (plist-get cat-plist :sitemap-priority) default-priority)
 
             (dolist (file (plist-get cat-plist :post-files))
-              ;; (message "File %s" file)
+              (debug-msg (3 :internal) "File %s" file)
               (let* ((file-fullpath (concatenate 'string
                                       (plist-get cat-plist :src-dir) file))
                      (file-plist (gethash (intern file-fullpath)
                                           file-plist-hash)))
-                ;; (message "     plist %s" file-plist)
+                (debug-msg (3 :internal) "     plist %s" file-plist)
                 (let* ((base-file-src (plist-get file-plist :bare))
                        (page-url
                         (concatenate 'string
@@ -1159,12 +1191,11 @@ structures of the blog artifacts.
               cat-atom-url cat-html-url cat-last-mod-date))
 
           (dolist (plist file-plists)
-            ;; (message "- Considering post for RSS feed: %s (%s)"
-            ;;       (plist-get plist :bare)
-            ;;       (format-time-string "%d %b %Y"
-            ;;                           (plist-get plist :mod)))
+            (debug-msg (3 :internal) "- Considering post for RSS feed: %s (%s)"
+                       (plist-get plist :bare)
+                       (format-time-string "%d %b %Y" (plist-get plist :mod)))
             (when (funcall feed-entry-sunset-pred (plist-get plist :mod))
-              ;; (message "  Added")
+              (debug-msg (3 :internal) "  Added")
               (with-current-buffer all-buf
                 (defblog/write-rss-for-plist plist cat-properties))
               (with-current-buffer rss-buf
@@ -1299,12 +1330,13 @@ itself."
           (dolist (plist file-plists)
             ;; Only add things from the last (let's say) five years.
 
-            ;; (message "- Considering post for Atom feed: %s (%s)"
-            ;;          (plist-get plist :bare)
-            ;;          (format-time-string "%d %b %Y"
-            ;;                              (plist-get plist :mod)))
+            (debug-msg (3 :internal)
+                       "- Considering post for Atom feed: %s (%s)"
+                       (plist-get plist :bare)
+                       (format-time-string "%d %b %Y"
+                                           (plist-get plist :mod)))
             (when (funcall feed-entry-sunset-pred (plist-get plist :mod))
-              ;; (message "  Added")
+              (debug-msg (3 :internal) "  Added")
               (with-current-buffer all-buf
                 (defblog/write-atom-for-plist plist cat-properties
                   default-author-name))
@@ -1393,7 +1425,7 @@ itself."
                                :post-files))
         (let ((cat-src-file (concatenate 'string cat-src-dir file))
               (cat-tmp-file (concatenate 'string cat-tmp-dir file)))
-          ;; (message "%s %s" cat-src-file cat-tmp-file)
+          (debug-msg (3 :internal) "%s %s" cat-src-file cat-tmp-file)
           (funcall post-copy-function cat-src-file cat-tmp-file
                    site-plist (gethash cat-src-file file-plist-hash)))))))
 
@@ -1401,24 +1433,34 @@ itself."
 ;;; Copying posts into the tmp space
 
 
-;; TODO To update --- just copied from the posts one.
 (defun defblog/pages-prep (cat-list cat-plist-hash gen-directory
-                           source-directory post-copy-function
+                           source-directory page-copy-function
                            site-plist file-plist-hash)
-  (dolist (cat cat-list)
-    (let ((cat-src-dir (concatenate 'string source-directory cat "/"))
-          (cat-tmp-dir (concatenate 'string
-                         gen-directory "posts/" cat "/")))
-      (when (file-directory-p cat-tmp-dir)
-        (delete-directory cat-tmp-dir t))
-      (make-directory cat-tmp-dir t)
-      (dolist (file (plist-get (gethash (intern cat) cat-plist-hash)
-                               :post-files))
-        (let ((cat-src-file (concatenate 'string cat-src-dir file))
-              (cat-tmp-file (concatenate 'string cat-tmp-dir file)))
-          ;; (message "%s %s" cat-src-file cat-tmp-file)
-          (funcall post-copy-function cat-src-file cat-tmp-file
-                   site-plist (gethash cat-src-file file-plist-hash)))))))
+  "Main function for installing non-index top-level pages.
+- CAT-LIST CAT-PLIST-HASH
+- GEN-DIRECTORY
+- SOURCE-DIRECTORY PAGE-COPY-FUNCTION
+- SITE-PLIST FILE-PLIST-HASH"
+  (debug-msg (1 t) "In defblog/pages-prep")
+  (debug-msg (6 t) "- Categories: %s" cat-plist-hash)
+  (debug-msg (4 t) "- gen-directory %s" gen-directory)
+  (debug-msg (4 t) "- source-directory %s" source-directory)
+  (let ((tmp-dir (concatenate 'string gen-directory "pages/")))
+    (debug-msg (4 t) "- gen-directory %s" gen-directory)
+    ;; Look at all of the file plists
+    (dolist (plist (hash-table-values file-plist-hash))
+      ;; Pages have depth zero
+      (when (zerop (plist-get plist :depth))
+        (let ((bare (plist-get plist :bare)))
+          ;; Skip the index file; we treat it separately.
+          (unless (string-match "index.org$" bare)
+            (let ((src-file
+                   (concatenate 'string source-directory bare))
+                  (tmp-file (concatenate 'string tmp-dir bare)))
+          (debug-msg (3 :internal) "%s %s" cat-src-file cat-tmp-file)
+          (funcall page-copy-function src-file tmp-file
+                   site-plist (gethash (intern src-file)
+                                       file-plist-hash)))))))))
 
 ;;; =================================================================
 ;;; Building indices of posts in the tmp space
@@ -1431,7 +1473,7 @@ itself."
   "For the \"-cat-indices\" targets, generate category index ORG files.
 These files should be written to the cat-indices subdirectory of the
 temporary files workspace."
-  ;; (message "Called defblog/cat-indices-prep %s" (funcall cat-list-getter))
+  (debug-msg (3 :internal) "Called defblog/cat-indices-prep %s" (funcall cat-list-getter))
 
   ;; For each category, and for its source and scratch directories,
   (dolist (cat (funcall cat-list-getter))
@@ -1442,10 +1484,10 @@ temporary files workspace."
 
            (cat-plist (gethash (intern cat) cat-plist-hash))
            (cat-title (plist-get cat-plist :title)))
-      ;; (message "Indexing category %s %s \"%s\"" cat cat-plist cat-title)
+      (debug-msg (3 :internal) "Indexing category %s %s \"%s\"" cat cat-plist cat-title)
 
       ;; Make sure the destination directory exists, and is empty.
-      ;; (message "Creating directory %s for %s" dest-dir cat-title)
+      (debug-msg (3 :internal) "Creating directory %s for %s" dest-dir cat-title)
       (when (file-directory-p dest-dir) (delete-directory dest-dir t))
       (make-directory dest-dir t)
 
@@ -1457,11 +1499,11 @@ temporary files workspace."
                           (and (string-match "\\.org$" x)
                                (not (string-match "/index.org$" x))))
                           all-files))
-             ;; (m2 (message "- org-files: %s" org-files))
+             ;; (m2 (debug-msg (0 t) "- org-files: %s" org-files))
 
              ;; Create the category's index.org file.
              (index-buffer (find-file-noselect dest-org)))
-        ;; (message "L1 %s %s" org-files index-buffer)
+        (debug-msg (3 :internal) "L1 %s %s" org-files index-buffer)
 
         (with-current-buffer index-buffer
           (erase-buffer)
@@ -1484,10 +1526,11 @@ temporary files workspace."
                                  full-files))
                  (sorter #'(lambda (y x) (time-less-p (plist-get x :date)
                                                       (plist-get y :date)))))
-            ;; (message "Iterating through full-files %s\n  plists %s"
-            ;;       full-files plists)
+            (debug-msg (3 :internal)
+                       "Iterating through full-files %s\n  plists %s"
+                       full-files plists)
             (dolist (prop-list (sort plists sorter))
-              ;; (message "Destructuring %s" prop-list)
+              (debug-msg (3 :internal) "Destructuring %s" prop-list)
               (let ((bare  (plist-get prop-list :bare))
                     (path  (plist-get prop-list :path))
                     (title (plist-get prop-list :title))
@@ -1495,7 +1538,7 @@ temporary files workspace."
                     (date  (plist-get prop-list :date))
                     (link  (plist-get prop-list :link))
                     (updated  (plist-get prop-list :updated)))
-                ;; (message "- bare %s title \"%s\" desc \"%s\"" bare title desc)
+                (debug-msg (3 :internal) "- bare %s title \"%s\" desc \"%s\"" bare title desc)
                 (when (or link bare)
                   (insert "- @@html:<a href=\""
                           (cond
@@ -1522,15 +1565,15 @@ temporary files workspace."
 ;;; Debugging utilities
 
 (defun defblog/state-dump (site-plist file-plists-hash cat-list cat-plists-hash)
-  (message "--------------------")
-  (message "Site properties: %s\n" site-plist)
+  (debug-msg (0 t) "--------------------")
+  (debug-msg (0 t) "Site properties: %s\n" site-plist)
   (dolist (file (hash-table-keys file-plists-hash))
-    (message "%s\n ==> %s\n" file (gethash file file-plists-hash)))
-  (message "\nCategories: %s\n" cat-list)
-  (message "\nCat hash: %s\n" cat-plists-hash)
+    (debug-msg (0 t) "%s\n ==> %s\n" file (gethash file file-plists-hash)))
+  (debug-msg (0 t) "\nCategories: %s\n" cat-list)
+  (debug-msg (0 t) "\nCat hash: %s\n" cat-plists-hash)
   (dolist (cat cat-list)
-    (message "%s\n ==> %s\n" cat (gethash (intern cat) cat-plists-hash)))
-  (message "--------------------"))
+    (debug-msg (0 t) "%s\n ==> %s\n" cat (gethash (intern cat) cat-plists-hash)))
+  (debug-msg (0 t) "--------------------"))
 
 ;;; =================================================================
 ;;; Miscellaneous utilities
@@ -1561,7 +1604,7 @@ temporary files workspace."
     (t (cons (car xs) (take (- n 1) (cdr xs))))))
 
 (defconst +defblog/scratch-subdirectories+
-  '("cat-indices" "gen-statics" "posts" "front")
+  '("cat-indices" "gen-statics" "posts" "pages" "front")
   "Scratch space subdirectories used internally by DEFBLOG.")
 
 (defconst +web-announcement-date+
@@ -1582,8 +1625,9 @@ Can be used as the :FRONT-COPY-FUNCTION argument."
                                              site-properties page-properties)
   "Page source copying function which injects text for certain Org comments.
 Can be used as the :FRONT-COPY-FUNCTION argument."
-  ;; (message "Called page-copy-with-substitutions for %s"
-  ;;          (plist-get page-properties :path))
+  (debug-msg (3 :internal)
+             "Called page-copy-with-substitutions for %s"
+             (plist-get page-properties :path))
 
   ;; First read in the source file as a list of lines.
   (let ((source-lines (with-temp-buffer
@@ -1592,7 +1636,7 @@ Can be used as the :FRONT-COPY-FUNCTION argument."
 
     ;; Now prepare the output file.
     (let ((dest-buffer (find-file-noselect dest-path)))
-      ;; (message "Opening %s for writing" dest-path)
+      (debug-msg (3 :internal) "Opening %s for writing" dest-path)
       (with-current-buffer dest-buffer
         (erase-buffer)
 
@@ -1614,7 +1658,7 @@ Can be used as the :FRONT-COPY-FUNCTION argument."
                                            (plist-get y :title)))))
                  (let ((tag (plist-get cat-plist :tag))
                        (title (plist-get cat-plist :title)))
-                   (insert "- [[" tag "/index.html][" title "]]\n")))))
+                   (insert "- [[./" tag "/][" title "]]\n")))))
 
             ;; Insert the last few new posts.
             ((string-match "^# RECENT-POST-LINKS\\(.*\\)$" line)
@@ -1622,8 +1666,8 @@ Can be used as the :FRONT-COPY-FUNCTION argument."
                                       earliest format-string numbered)
                  (defblog/page-subst-recent-posts-args src-path)
 
-               ;; (message "Earliest: %s %s" earliest
-               ;;          (format-time-string +rfc-3339-time-format+ earliest))
+               (debug-msg (3 :internal) "Earliest: %s %s" earliest
+                         (format-time-string +rfc-3339-time-format+ earliest))
                (let* ((all-posts (plist-get site-properties
                                             :sorted-file-plists))
                       (selected
@@ -1640,9 +1684,9 @@ Can be used as the :FRONT-COPY-FUNCTION argument."
                                    (make-string indent (char-from-name "SPACE"))
                                    (if numbered "1. " "- ")))
                                 (t (if numbered "1. " "- ")))))
-                 ;; (message "- Selected posts: %s" selected)
+                 (debug-msg (3 :internal) "- Selected posts: %s" selected)
                  (dolist (post selected)
-                   ;; (message "- Writing for post: %s" post)
+                   (debug-msg (3 :internal) "- Writing for post: %s" post)
                    (insert prefix)
                    (defblog/insert-formatted-page-plist format-string
                        site-properties post)
@@ -1652,9 +1696,9 @@ Can be used as the :FRONT-COPY-FUNCTION argument."
                    (insert "\n")))))
 
             ;; Default case: just insert the line
-            (t (message "- Regular line")
+            (t (debug-msg (0 t) "- Regular line")
                (insert line "\n"))))
-        ;; (message "Wrote lines")
+        (debug-msg (3 :internal) "Wrote lines")
 
         (save-buffer 0))
       (kill-buffer dest-buffer))))
@@ -1676,27 +1720,27 @@ the last update to the post.
 - %Y is replaced with the year (including century) of the last update to
 the post.
 and %% is replaced by a single %."
-  ;; (message "Called defblog/insert-formatted-page-plist for %s" page-properties)
+  (debug-msg (3 :internal) "Called defblog/insert-formatted-page-plist for %s" page-properties)
   (let ((next-char 0)
         (end-char (length format-string)))
     (while (< next-char end-char)
       (let ((c (aref format-string next-char)))
-        ;; (message "Processing character %d %s" next-char (char-to-string c))
+        (debug-msg (3 :internal) "Processing character %d %s" next-char (char-to-string c))
         (case c
           ((?%)
-           ;; (message "- Is %%")
+           (debug-msg (3 :internal) "- Is %%")
            (incf next-char)
            (unless (< next-char end-char)
              (error "Trailing %% in format string \"%s\"" format-string))
            (case (aref format-string next-char)
-             ((?L) (message "- Is %%L")
+             ((?L) (debug-msg (0 t) "- Is %%L")
               (let* ((url (plist-get site-properties :url))
                      (cat (plist-get page-properties :cat))
                      (link (plist-get page-properties :link))
                      (bare (replace-regexp-in-string
                             "\\.org$" ".html"
                             (plist-get page-properties :bare))))
-                (message "LINK %s -> %s" bare link)
+                (debug-msg (0 t) "LINK %s -> %s" bare link)
                 (cond
                   (link (setf url link))
                   (t
@@ -1704,29 +1748,31 @@ and %% is replaced by a single %."
                      (setf url (concatenate 'string url "/")))
                    (when cat (setf url (concatenate 'string url cat "/")))
                    (setf url (concatenate 'string url bare))))
-                (message "- url is %s" url)
+                (debug-msg (0 t) "- url is %s" url)
                 (insert "[[" url "][")
-                ;; (message "- Inserting URL %s" url)
+                (debug-msg (3 :internal) "- Inserting URL %s" url)
                 ))
-             ((?Z) (message "- Is %%Z")
+             ((?Z) (debug-msg (0 t) "- Is %%Z")
               (insert "]]"))
-             ((?t) (message "- Is %%t")
+             ((?t) (debug-msg (0 t) "- Is %%t")
               (insert (plist-get page-properties :title)))
-             ((?T) (message "- Is %%T")
+             ((?T) (debug-msg (0 t) "- Is %%T")
               (let ((title (plist-get page-properties :title)))
                      (when (and title (> (length title) 0))
                        (let ((first (seq-elt title 0))
                              (rest (seq-drop title 1)))
                          (insert (char-to-string (capitalize first)) rest)))))
-             ((?d) (message "- Is %%d")
+             ((?d) (debug-msg (0 t) "- Is %%d")
               (insert (plist-get page-properties :desc)))
-             ((?M) (message "- Is %%M")
+             ((?M) (debug-msg (0 t) "- Is %%M")
               (insert (format-time-string "%B"
                                           (plist-get page-properties :mod))))
-             ((?D) (message "- Is %%D")
+             ((?D)
+              (debug-msg (0 t) "- Is %%D")
               (insert (format-time-string "%e"
                                           (plist-get page-properties :mod))))
-             ((?Y) (message "- Is %%Y")
+             ((?Y)
+              (debug-msg (0 t) "- Is %%Y")
               (insert (format-time-string "%Y"
                                           (plist-get page-properties :mod))))
              (otherwise
@@ -1797,7 +1843,7 @@ and %% is replaced by a single %."
               (cond
                 ;; Use a number of days before today if it is given.
                 (max-age-days
-                 ;; (message "Using max-age-days %s" max-age-days)
+                 (debug-msg (3 :internal) "Using max-age-days %s" max-age-days)
                  (encode-time
                   (decoded-time-add
                    (decode-time (current-time))
@@ -1806,18 +1852,18 @@ and %% is replaced by a single %."
                                       :month 0 :year 0 :zone 0))))
                 ;; Otherwise use a number of months.
                 (max-age-months
-                 ;; (message "Using max-age-months %s" max-age-months)
+                 (debug-msg (3 :internal) "Using max-age-months %s" max-age-months)
                  (its (encode-time
                        (decoded-time-add
                         (decode-time (current-time))
                         (make-decoded-time :second 0 :minute 0 :hour 0 :day 0
                                            :month (- max-age-months)
                                            :year 0 :zone 0))))
-                 ;; (message "- %s" (it))
+                 (debug-msg (3 :internal) "- %s" (it))
                  (it))
                 ;; Otherwise use a number of years.
                 (max-age-years
-                 ;; (message "Using max-age-years %s" max-age-years)
+                 (debug-msg (3 :internal) "Using max-age-years %s" max-age-years)
                  (its
                   (encode-time
                    (decoded-time-add
@@ -1825,17 +1871,17 @@ and %% is replaced by a single %."
                     (make-decoded-time :second 0 :minute 0 :hour 0
                                        :day 0 :month 0
                                        :year (- max-age-years) :zone 0))))
-                 ;; (message "- %s" (it))
+                 (debug-msg (3 :internal) "- %s" (it))
                  (it))
                 ;; Otherwise parse a date string with an absolute
                 ;; earliest point.
                 (earliest-string
-                 ;; (message "Using earliest-string")
+                 (debug-msg (3 :internal) "Using earliest-string")
                  (parse-time-string earliest-string))
                 ;; Otherwise use the date of the announcement of the
                 ;; web.
                 (t
-                 ;; (message "Using +web-announcement-date+")
+                 (debug-msg (3 :internal) "Using +web-announcement-date+")
                  +web-announcement-date+)))
 
              (result (list max indent newlines final-newline earliest
