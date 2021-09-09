@@ -36,23 +36,23 @@ So if the source directory is /DIR/TO/SRC, then a possible
 directory layout is:
 
     /DIR/TO/SRC/
-	  |
-	  +-- index.org    Top-level page
-	  |
-	  +-- style.css    Style sheet for the generated pages
-	  |
-	  +-- contact.org  A page of contact information
-	  |
-	  +-- jokes.org    A page of favorite jokes
-	  |
-	  +-- kittens      A subdirectory corresponding to a category of 
+      |
+      +-- index.org    Top-level page
+      |
+      +-- style.css    Style sheet for the generated pages
+      |
+      +-- contact.org  A page of contact information
+      |
+      +-- jokes.org    A page of favorite jokes
+      |
+      +-- kittens      A subdirectory corresponding to a category of 
            |           posts.
-	       |
-		   +-- category.txt   Properties of the "kittens" category.
            |
-		   +-- adopted.org    A post about adopting a kitten
+           +-- category.txt   Properties of the "kittens" category.
            |
-		   +-- vet-jul20.org  A post about a trip to the vet 
+           +-- adopted.org    A post about adopting a kitten
+           |
+           +-- vet-jul20.org  A post about a trip to the vet 
                               in July 2020.
 
 ## Calling `defblog`
@@ -253,29 +253,29 @@ pragmas.  Currently there are two substitutions:
 
    - `PAGE_SUBST_POSTS_INDENT` describes the indentation associated
      with each post reference.
-	 
-	  - If this property is a number `n`, then `n` spaces will precede
+     
+      - If this property is a number `n`, then `n` spaces will precede
         the information printed for each reference.
-		
+        
       - If this property is `nil`, then no prefix is printed.
 
-	  - Otherwise, the string given for this property is used.
-	  
+      - Otherwise, the string given for this property is used.
+      
    - `PAGE_SUBST_POSTS_NEWLINES` If this property is non-null, then a
      newline is started after the information printed for each
      reference.
-	  
+      
    - `PAGE_SUBST_POSTS_FINAL_NEWLINE` If this property is non-null but
      `PAGE_SUBST_POSTS_NEWLINES` is null, then a newline will be
      inserted after the last reference.
-	  
+      
    - `PAGE_SUBST_POSTS_FORMAT_STRING` This format string describes
      what should be printed for each reference.  In the usual manner
      for format strings, most characters are echoed verbatim, `%%`
      translates to `%`, and
-	 
+     
       - `%L` is replaced with the opening of a link to the post.
-	  - `%Z` is replaced with the closing of a link to the post.
+      - `%Z` is replaced with the closing of a link to the post.
       - `%t` is replaced with the title of the post.
       - `%T` is replaced with the title of the post, capitalizing the
         first letter if it is not already capitalized.
@@ -286,13 +286,13 @@ pragmas.  Currently there are two substitutions:
         (space-padded) of the last update to the post.
       - `%Y` is replaced with the year (including century) of the last
         update to the post.
-	 
-	 The default is `"%L%T%Z (%M %D, %Y)"`.
-	  
+     
+     The default is `"%L%T%Z (%M %D, %Y)"`.
+      
    - `PAGE_SUBST_POSTS_NUMBERED` If this property is non-null, then
      the references are inserted as a numbered list; otherwise they
      are inserted as a non-numbered list.
-	  
+      
 - If a line starts
 
   ```lisp
