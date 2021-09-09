@@ -1,0 +1,7 @@
+# -*- org -*-
+
+- general-dev :: Currently in development branch(es).
+
+  - Squashed tabs in the [[./README.md][README.md]] file.
+
+- 0.1.0 :: Initial numbered release.
