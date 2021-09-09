@@ -1,9 +1,13 @@
-# defblog - Web sites as Org-mode files
+# defblog — Web sites as Org-mode files
 
-Declare a simple structured blog to be published with ORG-PUBLISH.
+Declare a simple structured blog to be published with `org-publish`.
 This package offers an all-Emacs solution to maintaining a web site
-(except for any uploading via rsync, which DEFBLOG can trigger through
-ORG-PUBLISH).
+(except for uploading via rsync, which `defblog` triggers through
+`org-publish`).
+
+## Version
+
+This file describes `defblog` version 0.1.0.
 
 ## Requirements
 

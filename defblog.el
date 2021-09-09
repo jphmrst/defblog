@@ -1,7 +1,40 @@
 ;;; defblog --- A wrapper for org-publish, for producing blogs from
 ;;; local Org-mode files.
 
+;; Copyright (C) 2021 John Maraist
+
+;; Author: John Maraist <defblog-author@maraist.org>
+;; Maintainer: John Maraist <defblog-author@maraist.org>
+;; Keywords: org-publish, web, blog
+;; Version: 0.1.0
+;; X-URL: https://github.com/jphmrst/defblog
+
+;; This program is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation; either version 3, or (at your option)
+;; any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with GNU Emacs; see the file LICENSE.  If not, write to the
+;; Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+;; Boston, MA 02110-1301, USA.
+
 ;;; Commentary:
+
+;; DEFBLOG is a wrapper around ORG-PUBLISH which allows you to declare
+;; a simple structured blog.  This package offers an all-Emacs
+;; solution to maintaining a web site (except for any uploading via
+;; rsync, which DEFBLOG can triggered through ORG-PUBLISH).  For more
+;; information, see the README.md file.
+
+;;; NOTES AND CURRENT TODOs
+
+;;; Things to have before calling it Version 1.0
 
 ;; TODO Format string for each page list entry in category.txt file
 ;; property.
@@ -9,13 +42,14 @@
 ;; TODO Add options for CATEGORY-LINKS pragma in
 ;; DEFBLOG/PAGE-COPY-WITH-SUBSTITUTIONS
 ;;
-;; TAG TODOs:
+;; Develop a scheme for tags, essentially as a virtual superset of
+;; categories:
 ;;
 ;; - TODO Receive TAGS property in posts.
 ;;
 ;; - TODO Write TAG-LINKS pragma for DEFBLOG/PAGE-COPY-WITH-SUBSTITUTIONS.
 ;;
-;; HTACCESS TODOs:
+;; Refine HTACCESS file generation:
 ;;
 ;; - TODO Use the remote-htaccess argument for the remote destination
 ;; - of the htaccess file.  If defined:
@@ -30,10 +64,12 @@
 ;;
 ;; - TODO Add a forwards-list argument to defdoc for other forwards.
 ;;
-;; TODO Add a way to create the ORG for a page/post from scratch.
-;;
 ;; TODO Ignore/warn about index.org source files in the category
 ;; directories.
+
+;;; Other ideas and tasks
+
+;; TODO Add a way to create the ORG for a page/post from scratch.
 
 ;;; Code:
 (require 'anaphora-anywhere)
