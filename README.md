@@ -218,7 +218,7 @@ verbatim copy, the `defblog/page-copy-with-substitutions` function can
 be passed for either or both of the `post-copy-function` and
 `front-copy-function` keyword arguments to `defblog`.  This processor
 also copies most text verbatim, but rewrites certain expressions and
-pragmas.  Currently there is one substitution:
+pragmas.  Currently there are two substitutions:
 
 - If a line starts
 
@@ -289,6 +289,17 @@ pragmas.  Currently there is one substitution:
      the references are inserted as a numbered list; otherwise they
      are inserted as a non-numbered list.
 	  
+- If a line starts
+
+  ```lisp
+  # CATEGORY-LINKS
+  ```
+
+  then this line will be replaced with several lines of links to
+  category index pages.  Right now the substitution produces a
+  non-numbered list; future work will allow controlling the list with
+  file properties, as for the recent posts pragma.
+
 ### Custom file processors 
 
 Any function can be provided for the `post-copy-function` and

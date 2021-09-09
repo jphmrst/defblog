@@ -1592,13 +1592,92 @@ Used as an earliest-possible post- or updated-date for pages and posts.")
 (defun defblog/page-copy-verbatim (src-path dest-path
                                    site-properties page-properties)
   "Function which only copies in page source.
-Can be used as the :FRONT-COPY-FUNCTION argument."
+Can be used as the :FRONT-COPY-FUNCTION and :POST-COPY-FUNCTION arguments."
   (copy-file src-path dest-path))
 
 (defun defblog/page-copy-with-substitutions (src-path dest-path
                                              site-properties page-properties)
   "Page source copying function which injects text for certain Org comments.
-Can be used as the :FRONT-COPY-FUNCTION argument."
+Can be used as the :FRONT-COPY-FUNCTION and :POST-COPY-FUNCTION arguments.
+
+This processor copies most text verbatim, but rewrites certain expressions and
+pragmas.  Currently there are two substitutions:
+
+- If a line starts
+
+  # RECENT-POST-LINKS
+
+  then this line will be replaced with information from recent posts.
+  The substitution is controlled by the following file properties
+  which can vary from file to file:
+
+   - PAGE_SUBST_POSTS_MAX gives the maximum number of posts which
+     will be included.  By default this value is nil, signifying no
+     maximum.
+
+   - PAGE_SUBST_POSTS_MAX_AGE_DAYS,
+     PAGE_SUBST_POSTS_MAX_AGE_MONTHS, and
+     PAGE_SUBST_POSTS_MAX_AGE_YEARS give the maximum age of post
+     which should be included.  At most one of these properties
+     will be consulted: if DAYS is given, then it is used;
+     otherwise MONTHS; and then YEARS.
+
+   - PAGE_SUBST_POSTS_EARLIEST This property is checked only when
+     the PAGE_SUBST_POSTS_MAX_AGE_* properties are not given, and
+     gives the date of the earliest last-modified post which can
+     appear.  The string given for this property is converted to
+     a date with parse time string.
+
+   - PAGE_SUBST_POSTS_INDENT describes the indentation associated
+     with each post reference.
+
+      - If this property is a number N, then N spaces will precede
+        the information printed for each reference.
+
+      - If this property is nil, then no prefix is printed.
+
+        - Otherwise, the string given for this property is used.
+
+   - PAGE_SUBST_POSTS_NEWLINES If this property is non-null, then a
+     newline is started after the information printed for each
+     reference.
+
+   - PAGE_SUBST_POSTS_FINAL_NEWLINE If this property is non-null but
+     PAGE_SUBST_POSTS_NEWLINES is null, then a newline will be
+     inserted after the last reference.
+
+   - PAGE_SUBST_POSTS_FORMAT_STRING This format string describes
+     what should be printed for each reference.  In the usual manner
+     for format strings, most characters are echoed verbatim, %%
+     translates to %, and
+
+      - %L is replaced with the opening of a link to the post.
+          - %Z is replaced with the closing of a link to the post.
+      - %t is replaced with the title of the post.
+      - %T is replaced with the title of the post, capitalizing the
+        first letter if it is not already capitalized.
+      - %d is replaced with the description of the post.
+      - %M is replaced with the full name of the month of the last
+        update to the post.
+      - %D is replaced with the number of the day of month
+        (space-padded) of the last update to the post.
+      - %Y is replaced with the year (including century) of the last
+        update to the post.
+
+         The default is \"%L%T%Z (%M %D, %Y)\".
+
+   - PAGE_SUBST_POSTS_NUMBERED If this property is non-null, then
+     the references are inserted as a numbered list; otherwise they
+     are inserted as a non-numbered list.
+
+- If a line starts
+
+  # CATEGORY-LINKS
+
+  then this line will be replaced with several lines of links to
+  category index pages.  Right now the substitution produces a
+  non-numbered list; future work will allow controlling the list with
+  file properties, as for the recent posts pragma."
   (debug-msg (3 :internal)
              "Called page-copy-with-substitutions for %s"
              (plist-get page-properties :path))
