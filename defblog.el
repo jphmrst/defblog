@@ -3,8 +3,6 @@
 
 ;;; Commentary:
 
-;; TODO Do not close source file buffers which were already open.
-;;
 ;; TODO Format string for each page list entry in category.txt file
 ;; property.
 ;;
