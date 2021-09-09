@@ -2,7 +2,7 @@
 
 Declare a simple structured blog to be published with ORG-PUBLISH.
 This package offers an all-Emacs solution to maintaining a web site
-(except for any uploading via rsync, which can be triggered from with
+(except for any uploading via rsync, which DEFBLOG can trigger through
 ORG-PUBLISH).
 
 ## Requirements
