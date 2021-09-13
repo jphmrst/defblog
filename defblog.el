@@ -279,8 +279,6 @@ arguments:
         ;; Names of global constants associated with this blog.  Each
         ;; of these names is also associated with a DEFVAR in the
         ;; macro expansion.
-        (source-directory-var (intern (concatenate 'string
-                                        "+defblog/" name "/src-basedir+")))
         (publish-directory-var (intern (concatenate 'string
                                          "+defblog/" name "/pub-basedir+")))
         (gen-directory-var (intern (concatenate 'string
@@ -359,7 +357,7 @@ arguments:
            (t (error "Unrecognized value for FEED-ENTRY-SUNSET: %s"
                      feed-entry-sunset)))))
     
-    `(progn
+    `(let ()
 
        ;; DEFVARs corresponding to the stateful components of this
        ;; blog.
@@ -388,12 +386,6 @@ arguments:
 
        ;; DEFVARs corresponding to the constants defined for this
        ;; blog.
-
-       (when (boundp ',source-directory-var)
-         (makunbound ',source-directory-var))
-       (defvar ,source-directory-var ,source-directory
-         ,(concatenate 'string
-            "Directory with the source ORG files of the " name " blog."))
 
        (when (boundp ',publish-directory-var)
          (makunbound ',publish-directory-var))
@@ -465,10 +457,10 @@ arguments:
 
            (multiple-value-bind (last-blog-update cat-list)
                (defblog/table-setup-fn properties
-                   ,gen-directory-var ,source-directory-var
+                   ,gen-directory-var ,source-directory
                    file-plists-hash category-plists-hash)
              (setf ,site-plist-var
-                   (list :source-directory ,source-directory-var
+                   (list :source-directory ,source-directory
                          :temp-directory ,gen-directory-var
                          :publish-directory ,publish-directory-var
                          :file-plists-hash file-plists-hash
@@ -669,7 +661,7 @@ arguments:
              ;; copied over to pub space without translation.
              (src-statics-entry
               (list :publishing-function 'org-publish-attachment
-                    :base-directory ,source-directory-var
+                    :base-directory ,source-directory
                     :base-extension
                     "html\\|css\\|jpg\\|gif\\|png\\|xml\\|pdf\\|el\\|gz\\|uu"
                     :publishing-directory ,publish-directory-var
