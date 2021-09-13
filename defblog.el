@@ -275,10 +275,6 @@ arguments:
         ;; expansion.
         (site-plist-var (intern (concatenate 'string
                                   "+defblog/" name "/site-plist+")))
-        (file-plists-hash (intern (concatenate 'string
-                                    "+defblog/" name "/file-plists-hash+")))
-        (category-tags (intern (concatenate 'string
-                                 "*defblog/" name "/category-tags*")))
         (category-plists-hash (intern (concatenate 'string
                                         "+defblog/" name
                                         "/category-plists-hash+")))
@@ -374,11 +370,6 @@ arguments:
        (when (boundp ',site-plist-var) (makunbound ',site-plist-var))
        (defvar ,site-plist-var nil
          ,(concatenate 'string "General property list for the " name " blog."))
-
-       (when (boundp ',category-tags) (makunbound ',category-tags))
-       (defvar ,category-tags nil
-         ,(concatenate 'string
-            "Storage for the list of categories in the " name " blog."))
 
        (when (boundp ',category-plists-hash)
          (makunbound ',category-plists-hash))
@@ -485,14 +476,13 @@ arguments:
                (defblog/table-setup-fn properties
                    ,gen-directory-var ,source-directory-var
                    file-plists-hash ,category-plists-hash)
-             (setf ,category-tags cat-list)
              (setf ,site-plist-var
                    (list :source-directory ,source-directory-var
                          :temp-directory ,gen-directory-var
                          :publish-directory ,publish-directory-var
                          :file-plists-hash file-plists-hash
                          :cat-plists-hash ,category-plists-hash
-                         :category-tags ,category-tags
+                         :category-tags cat-list
                          :sorted-file-plists
                          (sort (hash-table-values file-plists-hash)
                                #'(lambda (x y)
@@ -564,7 +554,8 @@ arguments:
          (debug-msg (0 t) "Cleaning up defblog temp structures...")
          (clrhash (plist-get ,site-plist-var :file-plists-hash))
          (clrhash ,category-plists-hash)
-         (setf ,category-tags nil)
+         (setf ,site-plist-var
+               (plist-put ,site-plist-var :category-tags nil))
          (debug-msg (0 t) "Cleaning up defblog temp structures...done"))
 
        (defun ,state-dump-fn ()
@@ -572,10 +563,8 @@ arguments:
            (defblog/state-dump ,site-plist-var)))
 
        (defun ,cat-indices-prep-fn (properties)
-         (defblog/cat-indices-prep #'(lambda () ,category-tags)
-             ,site-plist-var
-             ,category-index-css-style-rel-path
-             #',cat-index-title-fn))
+         (defblog/cat-indices-prep ,site-plist-var
+             ,category-index-css-style-rel-path #',cat-index-title-fn))
 
        (defun ,gen-statics-prep-fn (properties)
          (defblog/gen-statics-prep ,site-plist-var
@@ -1562,26 +1551,25 @@ the feed."
 ;;; =================================================================
 ;;; Building indices of posts in the tmp space
 
-(defun defblog/cat-indices-prep (cat-list-getter site-plist
+(defun defblog/cat-indices-prep (site-plist
                                  cat-indices-style-link
                                  cat-index-title-fn)
   "For the \"-cat-indices\" targets, generate category index ORG files.
 These files should be written to the cat-indices subdirectory of the
 temporary files workspace."
   (declare (indent nil))
-  (debug-msg (3 :internal) "Called defblog/cat-indices-prep %s"
-    (funcall cat-list-getter))
 
   ;; Pull out site info.
   (with-plist-properties ((file-plist-hash :file-plists-hash)
                           (cat-plist-hash :cat-plists-hash)
+                          (cat-tags :category-tags)
                           (source-directory :source-directory)
                           (gen-directory :temp-directory)
                           (blog-title :title))
       site-plist
 
     ;; For each category, and for its source and scratch directories,
-    (dolist (cat (funcall cat-list-getter))
+    (dolist (cat cat-tags)
       (let* ((cat-src-dir (concatenate 'string source-directory cat "/"))
              (dest-dir (concatenate 'string
                          gen-directory "cat-indices/" cat "/"))
