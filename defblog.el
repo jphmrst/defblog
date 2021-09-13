@@ -493,9 +493,17 @@ arguments:
              ,file-plists-hash ,category-plists-hash
              #'(lambda (x) (setf ,category-tags x))
              #'(lambda () ,category-tags)
-             #'(lambda (x) (setf ,last-blog-update x))
-             #'(lambda (x) (setf ,site-plist-var x))
-             ,blog-title ,blog-desc ,blog-url)
+             #'(lambda (x) (setf ,last-blog-update x)))
+         (setf ,site-plist-var
+               (list :source-directory ,source-directory-var
+                     :file-plists-hash ,file-plists-hash
+                     :cat-plists-hash ,category-plists-hash
+                     :sorted-file-plists
+                     (sort (hash-table-values ,file-plists-hash)
+                           #'(lambda (x y)
+                               (time-less-p (plist-get y :mod)
+                                            (plist-get x :mod))))
+                     :title ,blog-title :desc ,blog-desc :url ,blog-url))
          (debug-msg (0 t) "Setting up defblog temp structures...done")
          (,state-dump-fn)
 
@@ -562,7 +570,7 @@ arguments:
                                    #',cat-index-title-fn))
 
        (defun ,gen-statics-prep-fn (properties)
-         (defblog/gen-statics-prep properties ,source-directory-var
+         (defblog/gen-statics-prep properties
            ,gen-directory-var ,publish-directory-var ,site-plist-var
            ,category-tags ,last-blog-update
            ,generate-xml-sitemap ,generate-rss ,generate-atom
@@ -572,12 +580,11 @@ arguments:
 
        (defun ,posts-prep-fn (properties)
          (defblog/posts-prep ,site-plist-var ,category-tags ,gen-directory-var
-                             ,source-directory-var #',post-copy-function))
+                             #',post-copy-function))
 
        (defun ,pages-prep-fn (properties)
          (defblog/pages-prep ,site-plist-var ,category-tags
-                             ,gen-directory-var
-                             ,source-directory-var #',page-copy-function))
+                             ,gen-directory-var #',page-copy-function))
 
        ;; Register this blog with org-project.
        (let ((cleaned-alist (alist-remove-string-key
@@ -768,8 +775,7 @@ arguments:
 (defun defblog/table-setup-fn (properties gen-directory source-directory
                                file-plist-hash category-plist-hash
                                cat-list-setter cat-list-getter
-                               last-post-setter site-plist-setter
-                               site-title site-desc site-url)
+                               last-post-setter)
   "Reset the global structures associated with a blog.
 - PROPERTIES is the property list provided from ORG-PUBLISH.
 - GEN-DIRECTORY is the root directory of the temporary files area
@@ -784,16 +790,7 @@ the category list global variable for this blog."
   (defblog/reset-file-plist-hash source-directory file-plist-hash
     category-plist-hash)
   (defblog/add-table-summary-data file-plist-hash category-plist-hash
-    last-post-setter)
-  (funcall site-plist-setter
-           (list :file-plists-hash file-plist-hash
-                 :cat-plists-hash category-plist-hash
-                 :sorted-file-plists
-                 (sort (hash-table-values file-plist-hash)
-                       #'(lambda (x y)
-                           (time-less-p (plist-get y :mod)
-                                        (plist-get x :mod))))
-                 :title site-title :desc site-desc :url site-url)))
+    last-post-setter))
 
 ;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ;;; Managing the file-plist hashtable.
@@ -1019,9 +1016,8 @@ the category list global variable for this blog."
 ;;; =================================================================
 ;;; Generating non-ORG/HTML files.
 
-(defun defblog/gen-statics-prep (properties source-directory
-                                 gen-directory pub-directory site-plist
-                                 category-tags
+(defun defblog/gen-statics-prep (properties gen-directory pub-directory
+                                 site-plist category-tags
                                  last-update generate-xml-sitemap
                                  generate-rss generate-atom generate-htaccess
                                  default-author-name feed-entry-sunset-pred
@@ -1033,11 +1029,11 @@ the temporary files workspace.
 - PROPERTIES is as specified in org-publish."
 
   (when generate-rss
-    (defblog/write-rss properties site-plist source-directory gen-directory
+    (defblog/write-rss properties site-plist gen-directory
                        category-tags last-update feed-entry-sunset-pred))
 
   (when generate-atom
-    (defblog/write-atom properties site-plist source-directory gen-directory
+    (defblog/write-atom properties site-plist gen-directory
                         category-tags last-update default-author-name
                         feed-entry-sunset-pred))
 
@@ -1139,15 +1135,21 @@ structures of the blog artifacts."
                           site-url cat-tag "/"
                           (replace-regexp-in-string "\\.org$" ".html"
                                                     base-file-src))))
-                  (defblog/write-xml-sitemap-entry page-url
-                      (plist-get file-plist :date)
-                    (plist-get file-plist :updated)
-                    (plist-get file-plist :change-freq)
-                    (plist-get cat-plist :change-freq)
-                    default-change-freq
-                    (plist-get file-plist :sitemap-priority)
-                    (plist-get cat-plist :sitemap-priority)
-                    default-priority))))))
+                  (with-plist-properties ((date :date)
+                                          (updated :updated)
+                                          (file-change-freq :change-freq)
+                                          (file-priority :sitemap-priority))
+                      file-plist
+                    (with-plist-properties ((cat-change-freq :change-freq)
+                                            (cat-priority :sitemap-priority))
+                        cat-plist
+                      (defblog/write-xml-sitemap-entry page-url date updated
+                                                       file-change-freq
+                                                       cat-change-freq
+                                                       default-change-freq
+                                                       file-priority
+                                                       cat-priority
+                                                       default-priority))))))))
         (insert "</urlset>\n")))))
 
 (defun defblog/write-xml-sitemap-entry (page-url post-time update-time
@@ -1157,6 +1159,7 @@ structures of the blog artifacts."
                                         page-priority
                                         group-default-priority
                                         blog-default-priority)
+  (declare (indent 0))
   (let* ((mod-time (cond
                      ((null post-time) update-time)
                      ((null update-time) post-time)
@@ -1185,17 +1188,18 @@ structures of the blog artifacts."
 ;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ;;; Writing RSS feeds
 
-(defun defblog/write-rss (properties site-plist source-directory gen-directory
+(defun defblog/write-rss (properties site-plist gen-directory
                           category-tags blog-last-mod feed-entry-sunset-pred)
   "Write RSS files for the overall site and for each post category.
 - PROPERTIES are from org-publish.
-- SOURCE-DIRECTORY (respectively GEN-DIRECTORY) is the absolute path
-to the blog source (scratch space) directory.
-- CATEGORY-TAGS, FILE-PLIST-HASH and CAT-PLIST-HASH are the internal data
-structures of the blog artifacts.
+- GEN-DIRECTORY is the temporary space used for setting up the various parts
+of the published site.
+- SITE-PLIST and CATEGORY-TAGS are the internal data structures of the
+blog artifacts.
 - BLOG-NAME, BLOG-DESC and BLOG-URL are strings describing the blog itself."
   (with-plist-properties ((file-plist-hash :file-plists-hash)
                           (cat-plist-hash :cat-plists-hash)
+                          (source-directory :source-directory)
                           (blog-name :title)
                           (blog-desc :desc)
                           (blog-url :url))
@@ -1218,8 +1222,7 @@ structures of the blog artifacts.
               cat-html-url
               (plist-get cat-properties :latest-mod))
             (defblog/write-category-rss-entries category-tag cat-properties
-              file-plist-hash blog-name blog-url
-              gen-basedir feed-entry-sunset-pred)
+              source-directory file-plist-hash feed-entry-sunset-pred)
             (defblog/write-rss-closing))))
 
       ;; Now write the main RSS file, with the entries from each category.
@@ -1229,13 +1232,13 @@ structures of the blog artifacts.
         (dolist (category-tag category-tags)
           (let ((cat-properties (gethash (intern category-tag) cat-plist-hash)))
             (defblog/write-category-rss-entries category-tag cat-properties
-              file-plist-hash blog-name blog-url
-              gen-basedir feed-entry-sunset-pred)))
+              source-directory file-plist-hash feed-entry-sunset-pred)))
         (defblog/write-rss-closing)))))
 
 (defun defblog/write-category-rss-entries (category-tag cat-properties
-                                           file-plist-hash blog-name blog-url
-                                           gen-basedir feed-entry-sunset-pred)
+                                           source-directory
+                                           file-plist-hash
+                                           feed-entry-sunset-pred)
   (let* ((cat-src-dir (concatenate 'string source-directory category-tag "/"))
          (post-fullpaths (file-expand-wildcards (concatenate 'string
                                                   cat-src-dir "*.org")))
@@ -1320,7 +1323,7 @@ structures of the blog artifacts.
 ;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ;;; Writing Atom feeds
 
-(defun defblog/write-atom (properties site-plist source-directory gen-directory
+(defun defblog/write-atom (properties site-plist gen-directory
                            category-tags blog-last-mod
                            default-author-name feed-entry-sunset-pred)
   "Write Atom files for the overall site and for each post category.
@@ -1335,6 +1338,7 @@ the feed."
 
   (with-plist-properties ((file-plist-hash :file-plists-hash)
                           (cat-plist-hash :cat-plists-hash)
+                          (source-directory :source-directory)
                           (blog-name :title)
                           (blog-desc :desc)
                           (blog-url :url))
@@ -1462,14 +1466,14 @@ the feed."
 ;;; Copying posts into the tmp space
 
 (defun defblog/posts-prep (site-plist cat-list gen-directory
-                           source-directory post-copy-function)
+                           post-copy-function)
   (with-plist-properties ((file-plist-hash :file-plists-hash)
-                          (cat-plist-hash :cat-plists-hash))
+                          (cat-plist-hash :cat-plists-hash)
+                          (source-directory :source-directory))
       site-plist
     (dolist (cat cat-list)
       (let ((cat-src-dir (concatenate 'string source-directory cat "/"))
-            (cat-tmp-dir (concatenate 'string
-                           gen-directory "posts/" cat "/")))
+            (cat-tmp-dir (concatenate 'string gen-directory "posts/" cat "/")))
         (when (file-directory-p cat-tmp-dir)
           (delete-directory cat-tmp-dir t))
         (make-directory cat-tmp-dir t)
@@ -1486,7 +1490,7 @@ the feed."
 
 
 (defun defblog/pages-prep (site-plist cat-list gen-directory
-                           source-directory page-copy-function)
+                           page-copy-function)
   "Main function for installing non-index top-level pages.
 - SITE-PLIST
 - CAT-LIST
@@ -1495,7 +1499,8 @@ the feed."
   (declare (indent 0))
 
   (with-plist-properties ((file-plist-hash :file-plists-hash)
-                          (cat-plist-hash :cat-plists-hash))
+                          (cat-plist-hash :cat-plists-hash)
+                          (source-directory :source-directory))
       site-plist
     (debug-msg (1 t) "In defblog/pages-prep")
     (debug-msg (6 t) "- Categories: %s" cat-plist-hash)
