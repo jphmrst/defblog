@@ -1,7 +1,8 @@
 # -*- org -*-
 
-- general-dev :: Currently in development branch(es).
+- 0.1.1 (general-dev) :: Currently in development branch(es).
 
   - Squashed tabs in the [[./README.md][README.md]] file.
+  - Macro for clearer access to property lists.
 
 - 0.1.0 :: Initial numbered release.
