@@ -93,7 +93,7 @@
                                   +defblog/debug-topics+ :test 'eq)))
     `(message ,@args)))
 
-(defmacro with-plist-properties (plist-expr prop-specs &rest forms)
+(defmacro with-plist-properties (prop-specs plist-expr &rest forms)
   "Macro akin to WITH-ACCESSORS for property lists.
 - PLIST-EXPR is a form which should evaluate to a property list.  The macro
   returns a let-binding which first evaluates PLIST-EXPR.
@@ -976,26 +976,29 @@ the category list global variable for this blog."
       (let ((cat-plist (gethash cat category-plist-hash))
             (latest-post +web-announcement-date+)
             (latest-update +web-announcement-date+))
-        (with-plist-properties cat-plist ((cat-src-dir :src-dir)
-                                          (cat-post-files :post-files))
+        (with-plist-properties ((cat-src-dir :src-dir)
+                                (cat-post-files :post-files))
+            cat-plist
           (debug-msg (3 :internal) "- Has plist %s" cat-plist)
 
           (dolist (post-file cat-post-files)
             (debug-msg (3 :internal) "  - For file %s" post-file)
             (let* ((file-fullpath (concatenate 'string cat-src-dir post-file))
                    (file-plist (gethash (intern file-fullpath)
-                                        file-plist-hash))
-                   (file-posted (plist-get file-plist :date))
-                   (file-updated (plist-get file-plist :updated)))
-              (debug-msg (3 :internal) "    %s" file-fullpath)
-              (debug-msg (3 :internal) "    %s" file-plist)
-              (debug-msg (3 :internal) "    %s %s" file-posted file-updated)
-              (when (and (time-less-p latest-post file-posted) file-posted)
-                (debug-msg (3 :internal) "    Updating latest post time")
-                (setf latest-post file-posted))
-              (when (and file-updated (time-less-p latest-update file-updated))
-                (debug-msg (3 :internal) "    Updating latest update time")
-                (setf latest-update file-updated))))
+                                        file-plist-hash)))
+              (with-plist-properties ((file-posted :date)
+                                      (file-updated :updated))
+                  file-plist
+                (debug-msg (3 :internal) "    %s" file-fullpath)
+                (debug-msg (3 :internal) "    %s" file-plist)
+                (debug-msg (3 :internal) "    %s %s" file-posted file-updated)
+                (when (and (time-less-p latest-post file-posted) file-posted)
+                  (debug-msg (3 :internal) "    Updating latest post time")
+                  (setf latest-post file-posted))
+                (when (and file-updated
+                           (time-less-p latest-update file-updated))
+                  (debug-msg (3 :internal) "    Updating latest update time")
+                  (setf latest-update file-updated)))))
 
           (puthash cat
                    (plist-put (plist-put (plist-put cat-plist
@@ -1066,9 +1069,10 @@ the temporary files workspace.
 
     ;; Check each file in the file plist hash.
     (dolist (file-plist (hash-table-values file-plist-hash))
-      (let ((cat (plist-get file-plist :cat))
-            (bare (plist-get file-plist :bare))
-            (old-links (plist-get file-plist :old-urls)))
+      (with-plist-properties ((cat :cat)
+                              (bare :bare)
+                              (old-links :old-urls))
+          file-plist
 
         ;; One Redirect per old link to this file.
         (dolist (old-link old-links)
@@ -1277,35 +1281,39 @@ structures of the blog artifacts.
   (insert "  </channel>\n</rss>\n"))
 
 (defun defblog/write-rss-for-plist (plist category-properties)
-  (let* ((title (plist-get plist :title))
-         (bare  (plist-get plist :bare))
-         (date  (plist-get plist :date))
-         (desc  (plist-get plist :desc))
-         (quick-link  (plist-get plist :link))
-         (this-link (cond
-                      (quick-link quick-link)
-                      (t
-                       (concatenate 'string
-                         "https://maraist.org/"
-                         (plist-get category-properties :tag) "/"
-                         (replace-regexp-in-string "\\.org$" ".html" bare))))))
-    (insert "\n    <item>\n")
-    (insert "      <title>" (cond (title title) (t "(untitled)")) "</title>\n")
-    (insert "      <link>" this-link "</link>\n")
-    (insert "      <guid>" this-link "</guid>\n")
-    (insert "      <dc:creator><![CDATA[jm]]></dc:creator>\n")
-    (insert "      <pubDate>"
-            (cond
-              (date (format-time-string +rfc-822-time-format+ date))
-              (t "Fri, 08 Jan 2005 12:00:00"))
-            " +0000</pubDate>\n")
-    (insert "      <category><![CDATA["
-            (plist-get category-properties :title)
-            "]]></category>\n")
-    (when desc
-      (insert "      <description><![CDATA[" desc "]]></description>\n"))
-    (insert "      <slash:comments>0</slash:comments>\n")
-    (insert "    </item>\n")))
+  (with-plist-properties ((title :title)
+                          (bare :bare)
+                          (date :date)
+                          (desc :desc)
+                          (quick-link :link))
+      plist
+    (let* ((this-link (cond
+                        (quick-link quick-link)
+                        (t
+                         (concatenate 'string
+                           "https://maraist.org/"
+                           (plist-get category-properties :tag) "/"
+                           (replace-regexp-in-string "\\.org$" ".html" bare))))))
+      (insert "\n    <item>\n")
+      (insert "      <title>"
+              (cond (title title) (t "(untitled)"))
+              "</title>\n")
+      (insert "      <link>" this-link "</link>\n")
+      (insert "      <guid>" this-link "</guid>\n")
+      (insert "      <dc:creator><![CDATA[jm]]></dc:creator>\n")
+      (insert "      <pubDate>"
+              (cond
+                (date (format-time-string +rfc-822-time-format+ date))
+                (t "Fri, 08 Jan 2005 12:00:00"))
+              " +0000</pubDate>\n")
+      (insert "      <category><![CDATA["
+              (plist-get category-properties :title)
+              "]]></category>\n")
+      (when desc
+        (insert "      <description><![CDATA[" desc "]]></description>\n"))
+      (insert "      <slash:comments>0</slash:comments>\n")
+      (insert "    </item>\n"))))
+
 
 ;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ;;; Writing Atom feeds
@@ -1408,38 +1416,41 @@ the feed."
 
 (defun defblog/write-atom-for-plist (file-properties category-properties
                                      default-author-name)
-  (let* ((title (plist-get file-properties :title))
-         (bare (plist-get file-properties :bare))
-         (date (plist-get file-properties :date))
-         (desc (plist-get file-properties :desc))
-         (link (plist-get file-properties :link))
-         (author (plist-get file-properties :author-name))
-         (this-link (cond
-                      (link link)
-                      (t
-                       (concatenate 'string
-                         "https://maraist.org/"
-                         (plist-get category-properties :tag) "/"
-                         (replace-regexp-in-string "\\.org$" ".html" bare))))))
-    (insert "\n  <entry>\n")
-    (insert "      <title>" (cond (title title) (t "(untitled)")) "</title>\n")
-    (insert "      <link href=\"" this-link "\" />\n")
-    (insert "      <id>" this-link "</id>\n")
-    (insert "      <author><name>"
-            (cond
-              (author author)
-              (default-author-name default-author-name)
-              (t (error "No author (or default) for file %s" bare)))
-            "</name></author>\n")
-    (insert "      <updated>"
-            (cond
-              (date (format-time-string +rfc-3339-time-format+ date))
-              (t (format-time-string +rfc-3339-time-format+
-                                     +web-announcement-date+)))
-            "</updated>\n")
-    (when desc
-      (insert "      <summary><![CDATA[" desc "]]></summary>\n"))
-    (insert "    </entry>\n")))
+  (with-plist-properties ((title :title)
+                          (bare :bare)
+                          (date :date)
+                          (desc :desc)
+                          (link :link)
+                          (author :author-name))
+      file-properties
+    (let ((this-link (cond
+                       (link link)
+                       (t
+                        (concatenate 'string
+                          "https://maraist.org/"
+                          (plist-get category-properties :tag) "/"
+                          (replace-regexp-in-string "\\.org$" ".html"
+                                                    bare))))))
+      (insert "\n  <entry>\n")
+      (insert "      <title>" (cond (title title) (t "(untitled)"))
+              "</title>\n")
+      (insert "      <link href=\"" this-link "\" />\n")
+      (insert "      <id>" this-link "</id>\n")
+      (insert "      <author><name>"
+              (cond
+                (author author)
+                (default-author-name default-author-name)
+                (t (error "No author (or default) for file %s" bare)))
+              "</name></author>\n")
+      (insert "      <updated>"
+              (cond
+                (date (format-time-string +rfc-3339-time-format+ date))
+                (t (format-time-string +rfc-3339-time-format+
+                                       +web-announcement-date+)))
+              "</updated>\n")
+      (when desc
+        (insert "      <summary><![CDATA[" desc "]]></summary>\n"))
+      (insert "    </entry>\n"))))
 
 ;;; =================================================================
 ;;; Copying posts into the tmp space
@@ -1559,13 +1570,14 @@ temporary files workspace."
                        full-files plists)
             (dolist (prop-list (sort plists sorter))
               (debug-msg (3 :internal) "Destructuring %s" prop-list)
-              (let ((bare  (plist-get prop-list :bare))
-                    (path  (plist-get prop-list :path))
-                    (title (plist-get prop-list :title))
-                    (desc  (plist-get prop-list :desc))
-                    (date  (plist-get prop-list :date))
-                    (link  (plist-get prop-list :link))
-                    (updated  (plist-get prop-list :updated)))
+              (with-plist-properties ((bare :bare)
+                                      (path :path)
+                                      (title :title)
+                                      (desc :desc)
+                                      (date :date)
+                                      (link :link)
+                                      (updated :updated))
+                   prop-list
                 (debug-msg (3 :internal) "- bare %s title \"%s\" desc \"%s\"" bare title desc)
                 (when (or link bare)
                   (insert "- @@html:<a href=\""
@@ -1772,8 +1784,9 @@ pragmas.  Currently there are two substitutions:
                        #'(lambda (x y)
                            (string-lessp (plist-get x :title)
                                          (plist-get y :title)))))
-               (let ((tag (plist-get cat-plist :tag))
-                     (title (plist-get cat-plist :title)))
+               (with-plist-properties ((tag :tag)
+                                       (title :title))
+                    cat-plist
                  (insert "- [[./" tag "/][" title "]]\n")))))
 
           ;; Insert the last few new posts.
@@ -1847,34 +1860,33 @@ and %% is replaced by a single %."
              (error "Trailing %% in format string \"%s\"" format-string))
            (case (aref format-string next-char)
              ((?L) (debug-msg (0 t) "- Is %%L")
-              (let* ((url (plist-get site-properties :url))
-                     (cat (plist-get page-properties :cat))
-                     (link (plist-get page-properties :link))
-                     (bare (replace-regexp-in-string
-                            "\\.org$" ".html"
-                            (plist-get page-properties :bare))))
-                (debug-msg (0 t) "LINK %s -> %s" bare link)
-                (cond
-                  (link (setf url link))
-                  (t
-                   (unless (string-match "/$" url)
-                     (setf url (concatenate 'string url "/")))
-                   (when cat (setf url (concatenate 'string url cat "/")))
-                   (setf url (concatenate 'string url bare))))
-                (debug-msg (0 t) "- url is %s" url)
-                (insert "[[" url "][")
-                (debug-msg (3 :internal) "- Inserting URL %s" url)
-                ))
+              (with-plist-properties ((url :url)) site-properties
+                (with-plist-properties ((cat :cat) (link :link))
+                    page-properties
+                  (let* ((bare (replace-regexp-in-string
+                                "\\.org$" ".html"
+                                (plist-get page-properties :bare))))
+                    (debug-msg (0 t) "LINK %s -> %s" bare link)
+                    (cond
+                      (link (setf url link))
+                      (t
+                       (unless (string-match "/$" url)
+                         (setf url (concatenate 'string url "/")))
+                       (when cat (setf url (concatenate 'string url cat "/")))
+                       (setf url (concatenate 'string url bare))))
+                    (debug-msg (0 t) "- url is %s" url)
+                    (insert "[[" url "][")
+                    (debug-msg (3 :internal) "- Inserting URL %s" url)))))
              ((?Z) (debug-msg (0 t) "- Is %%Z")
               (insert "]]"))
              ((?t) (debug-msg (0 t) "- Is %%t")
               (insert (plist-get page-properties :title)))
              ((?T) (debug-msg (0 t) "- Is %%T")
               (let ((title (plist-get page-properties :title)))
-                     (when (and title (> (length title) 0))
-                       (let ((first (seq-elt title 0))
-                             (rest (seq-drop title 1)))
-                         (insert (char-to-string (capitalize first)) rest)))))
+                (when (and title (> (length title) 0))
+                  (let ((first (seq-elt title 0))
+                        (rest (seq-drop title 1)))
+                    (insert (char-to-string (capitalize first)) rest)))))
              ((?d) (debug-msg (0 t) "- Is %%d")
               (insert (plist-get page-properties :desc)))
              ((?M) (debug-msg (0 t) "- Is %%M")
