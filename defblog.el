@@ -502,7 +502,11 @@ arguments:
                        :page-copy-fn #',page-copy-function
                        :sitemap-default-priority ,sitemap-default-priority
                        :last-update last-blog-update
-                       :default-author-name ,default-author-name)))
+                       :default-author-name ,default-author-name
+                       :generate-xml-sitemap ,generate-xml-sitemap
+                       :generate-rss ,generate-rss
+                       :generate-atom ,generate-atom
+                       :generate-htaccess ,generate-htaccess)))
          (debug-msg (0 t) "Setting up defblog temp structures...done")
          (,state-dump-fn)
 
@@ -569,10 +573,9 @@ arguments:
                                    #',cat-index-title-fn))
 
        (defun ,gen-statics-prep-fn (properties)
-         (defblog/gen-statics-prep properties
+         (defblog/gen-statics-prep
              ,gen-directory-var ,publish-directory-var ,site-plist-var
-             ,generate-xml-sitemap ,generate-rss ,generate-atom
-             ,generate-htaccess ,feed-entry-sunset-pred
+             ,feed-entry-sunset-pred
              (symbol-name ',sitemap-default-change-freq)))
 
        (defun ,posts-prep-fn (properties)
@@ -632,8 +635,7 @@ arguments:
                     :base-directory ,get-pages-directory-var
                     :publishing-directory ,publish-directory-var
                     :exclude "index.org"
-                    :html-postamble
-                    "<a href=\"./\">Back to the top</a>."
+                    :html-postamble "<a href=\"./\">Back to the top</a>."
                     :recursive nil
                     :section-numbers ,page-section-numbers
                     :table-of-contents ,page-table-of-contents
@@ -1019,38 +1021,37 @@ Returns the date of last modification to site files.
 ;;; =================================================================
 ;;; Generating non-ORG/HTML files.
 
-(defun defblog/gen-statics-prep (properties gen-directory pub-directory
-                                 site-plist
-                                 generate-xml-sitemap
-                                 generate-rss generate-atom generate-htaccess
-                                 feed-entry-sunset-pred
-                                 default-change-freq)
+(defun defblog/gen-statics-prep (gen-directory pub-directory site-plist
+                                 feed-entry-sunset-pred default-change-freq)
   "Generate XML and other non-ORG/HTML files.
 
 These files should be written to the gen-statics subdirectory of
 the temporary files workspace.
-- PROPERTIES is as specified in org-publish."
+- SITE-PLIST is a property list detailing the site and its contents."
   (declare (indent nil))
 
-  (when generate-rss
-    (defblog/write-rss properties site-plist gen-directory
-                       feed-entry-sunset-pred))
+  (with-plist-properties ((generate-xml-sitemap :generate-xml-sitemap)
+                          (generate-rss :generate-rss)
+                          (generate-atom :generate-atom)
+                          (generate-htaccess :generate-htaccess))
+      site-plist
 
-  (when generate-atom
-    (defblog/write-atom properties site-plist gen-directory
-                        feed-entry-sunset-pred))
+    (when generate-rss
+      (defblog/write-rss site-plist gen-directory feed-entry-sunset-pred))
 
-  (when generate-xml-sitemap
-    (defblog/write-xml-sitemap properties site-plist gen-directory
-                               default-change-freq))
+    (when generate-atom
+      (defblog/write-atom site-plist gen-directory feed-entry-sunset-pred))
 
-  (when generate-htaccess
-    (defblog/write-htaccess properties site-plist pub-directory)))
+    (when generate-xml-sitemap
+      (defblog/write-xml-sitemap site-plist gen-directory default-change-freq))
+
+    (when generate-htaccess
+      (defblog/write-htaccess site-plist pub-directory))))
 
 ;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ;;; Generating an HTACCESS file for forwards.
 
-(defun defblog/write-htaccess (properties site-plist pub-directory)
+(defun defblog/write-htaccess (site-plist pub-directory)
   "Write a .htaccess file for URL forwarding."
   (declare (indent nil))
 
@@ -1084,8 +1085,7 @@ the temporary files workspace.
 ;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ;;; Generating the XML sitemap
 
-(defun defblog/write-xml-sitemap (properties site-plist gen-directory
-                                  default-change-freq)
+(defun defblog/write-xml-sitemap (site-plist gen-directory default-change-freq)
   "Generate an XML sitemap for a blog.
 - PROPERTIES are from org-publish.
 - GEN-DIRECTORY is the absolute path to the scratch space directory.
@@ -1194,8 +1194,7 @@ structures of the blog artifacts."
 ;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ;;; Writing RSS feeds
 
-(defun defblog/write-rss (properties site-plist gen-directory
-                          feed-entry-sunset-pred)
+(defun defblog/write-rss (site-plist gen-directory feed-entry-sunset-pred)
   "Write RSS files for the overall site and for each post category.
 - PROPERTIES are from org-publish.
 - GEN-DIRECTORY is the temporary space used for setting up the various parts
@@ -1337,15 +1336,10 @@ blog artifacts.
 ;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ;;; Writing Atom feeds
 
-(defun defblog/write-atom (properties site-plist gen-directory
-                           feed-entry-sunset-pred)
+(defun defblog/write-atom (site-plist gen-directory feed-entry-sunset-pred)
   "Write Atom files for the overall site and for each post category.
-- PROPERTIES are from org-publish.
-- SOURCE-DIRECTORY (respectively GEN-DIRECTORY) is the absolute path to
-the blog source (scratch space) directory.
-- CATEGORY-TAGS are internal data structures of the blog artifacts.
-- BLOG-LAST-MOD is the date of its last change.
-- DEFAULT-AUTHOR-NAME is required for the author tags in Atom.
+- SITE-PLIST is a property list detailing the site and posts.
+- GEN-DIRECTORY is the absolute path to the scratch space directory.
 - FEED-ENTRY-SUNSET-PRED describes when a post has aged out of inclusion in
 the feed."
   (declare (indent nil))
