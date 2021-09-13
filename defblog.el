@@ -76,12 +76,14 @@
 
 (defmacro if-show-state-dump (&rest forms)
   "Debugging flag: execute FORMS when debugging."
+  (declare (indent 0))
   `(progn ,@forms) ;; nil
   )
 
 (defconst +defblog/debug-level+ 0)
 (defconst +defblog/debug-topics+ '(:control))
 (cl-defmacro debug-msg ((level topic-or-topics) &rest args)
+  (declare (indent defun))
   (when (and (<= level +defblog/debug-level+)
              (or (eq topic-or-topics t)
                  (cl-intersection (cond
@@ -99,6 +101,7 @@
   (VAR (plist-get plist PROP)), where plist is the result of evaluating the
   PLIST-EXPR.
 - The FORMS become the body of this let-expression."
+  (declare (indent 2))
   (let ((plist (gensym)))
     `(let ((,plist ,plist-expr))
        (let ,(mapcar #'(lambda (spec)
@@ -233,6 +236,7 @@ arguments:
  1. POST-COPY-FUNCTION, applied to posts.
  2. FRONT-COPY-FUNCTION, applied to the top-level page.
 "
+  (declare (indent 3))
 
   ;; Check fatal combinations of present/missing arguments.
   (unless (file-directory-p source-directory)
@@ -441,7 +445,8 @@ arguments:
        (defvar ,get-posts-directory-var
            (concatenate 'string ,gen-directory-var "posts/")
          ,(concatenate 'string
-            "Scratch space directory for copying over posts for the " name " blog."))
+            "Scratch space directory for copying over posts for the "
+            name " blog."))
 
        (when (boundp ',get-pages-directory-var)
          (makunbound ',get-pages-directory-var))
@@ -774,6 +779,7 @@ arguments:
 information extracted from that file.
 - CAT-LIST-SETTER and CAT-LIST-GETTER are thunks which set (respectively, get)
 the category list global variable for this blog."
+  (declare (indent nil))
   (defblog/reset-categories-list source-directory cat-list-setter)
   (defblog/reset-categories-plist-hash source-directory
       (funcall cat-list-getter) category-plist-hash)
@@ -967,47 +973,46 @@ the category list global variable for this blog."
     (dolist (cat (hash-table-keys category-plist-hash))
       (debug-msg (3 :internal) "Crossreferencing for category %s" cat)
 
-      (let* ((cat-plist (gethash cat category-plist-hash))
-             (cat-src-dir (plist-get cat-plist :src-dir))
-             (cat-post-files (plist-get cat-plist :post-files))
+      (let ((cat-plist (gethash cat category-plist-hash))
+            (latest-post +web-announcement-date+)
+            (latest-update +web-announcement-date+))
+        (with-plist-properties cat-plist ((cat-src-dir :src-dir)
+                                          (cat-post-files :post-files))
+          (debug-msg (3 :internal) "- Has plist %s" cat-plist)
 
-             (latest-post +web-announcement-date+)
-             (latest-update +web-announcement-date+))
-        (debug-msg (3 :internal) "- Has plist %s" cat-plist)
+          (dolist (post-file cat-post-files)
+            (debug-msg (3 :internal) "  - For file %s" post-file)
+            (let* ((file-fullpath (concatenate 'string cat-src-dir post-file))
+                   (file-plist (gethash (intern file-fullpath)
+                                        file-plist-hash))
+                   (file-posted (plist-get file-plist :date))
+                   (file-updated (plist-get file-plist :updated)))
+              (debug-msg (3 :internal) "    %s" file-fullpath)
+              (debug-msg (3 :internal) "    %s" file-plist)
+              (debug-msg (3 :internal) "    %s %s" file-posted file-updated)
+              (when (and (time-less-p latest-post file-posted) file-posted)
+                (debug-msg (3 :internal) "    Updating latest post time")
+                (setf latest-post file-posted))
+              (when (and file-updated (time-less-p latest-update file-updated))
+                (debug-msg (3 :internal) "    Updating latest update time")
+                (setf latest-update file-updated))))
 
-        (dolist (post-file cat-post-files)
-          (debug-msg (3 :internal) "  - For file %s" post-file)
-          (let* ((file-fullpath (concatenate 'string cat-src-dir post-file))
-                 (file-plist (gethash (intern file-fullpath) file-plist-hash))
-
-                 (file-posted (plist-get file-plist :date))
-                 (file-updated (plist-get file-plist :updated)))
-            (debug-msg (3 :internal) "    %s" file-fullpath)
-            (debug-msg (3 :internal) "    %s" file-plist)
-            (debug-msg (3 :internal) "    %s %s" file-posted file-updated)
-            (when (and (time-less-p latest-post file-posted) file-posted)
-              (debug-msg (3 :internal) "    Updating latest post time")
-              (setf latest-post file-posted))
-            (when (and file-updated (time-less-p latest-update file-updated))
-              (debug-msg (3 :internal) "    Updating latest update time")
-              (setf latest-update file-updated))))
-
-        (puthash cat
-                 (plist-put (plist-put (plist-put cat-plist
-                                                  :latest-post latest-post)
-                                       :latest-update latest-update)
-                            :latest-mod (cond
-                                          ((null latest-post) latest-update)
-                                          ((null latest-update) nil)
-                                          ((time-less-p latest-post
-                                                        latest-update)
-                                           latest-update)
-                                          (t latest-post)))
-                 category-plist-hash)
-        (when (time-less-p last-blog-update latest-post)
-          (setf last-blog-update latest-post))
-        (when (time-less-p last-blog-update latest-update)
-          (setf last-blog-update latest-update))))
+          (puthash cat
+                   (plist-put (plist-put (plist-put cat-plist
+                                                    :latest-post latest-post)
+                                         :latest-update latest-update)
+                              :latest-mod (cond
+                                            ((null latest-post) latest-update)
+                                            ((null latest-update) nil)
+                                            ((time-less-p latest-post
+                                                          latest-update)
+                                             latest-update)
+                                            (t latest-post)))
+                   category-plist-hash)
+          (when (time-less-p last-blog-update latest-post)
+            (setf last-blog-update latest-post))
+          (when (time-less-p last-blog-update latest-update)
+            (setf last-blog-update latest-update)))))
     (funcall last-post-setter last-blog-update)))
 
 ;;; =================================================================
