@@ -275,6 +275,8 @@ arguments:
         ;; expansion.
         (site-plist-var (intern (concatenate 'string
                                   "+defblog/" name "/site-plist+")))
+        (system-tmp-dir-var (intern (concatenate 'string
+                                      "+defblog/" name "/system-tmp-dir+")))
 
         ;; Names of global constants associated with this blog.  Each
         ;; of these names is also associated with a DEFVAR in the
@@ -291,8 +293,6 @@ arguments:
          (intern (concatenate 'string "+defblog/" name "/cat-indices+")))
         (gen-statics-directory (intern (concatenate 'string
                                          "+defblog/" name "/gen-statics+")))
-        (system-tmp-dir-var (intern (concatenate 'string
-                                      "+defblog/" name "/system-tmp-dir+")))
 
         ;; Names of functions associated with this blog.  Each of
         ;; these names is associated with a DEFUN in the macro
