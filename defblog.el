@@ -91,6 +91,30 @@
                                   +defblog/debug-topics+ :test 'eq)))
     `(message ,@args)))
 
+(defmacro with-plist-properties (plist-expr prop-specs &rest forms)
+  "Macro akin to WITH-ACCESSORS for property lists.
+- PLIST-EXPR is a form which should evaluate to a property list.  The macro
+  returns a let-binding which first evaluates PLIST-EXPR.
+- PROP-SPECS is a list of forms (VAR PROP), which translates to a let-binding
+  (VAR (plist-get plist PROP)), where plist is the result of evaluating the
+  PLIST-EXPR.
+- The FORMS become the body of this let-expression."
+  (let ((plist (gensym)))
+    `(let ((,plist ,plist-expr))
+       (let ,(mapcar #'(lambda (spec)
+                         (cond
+                           ((symbolp spec)
+                            `(,spec (plist-get ,plist ,spec)))
+                           ((and (listp spec) (symbolp (car spec))
+                                 (null (cdr spec)))
+                            `(,(car spec) (plist-get ,plist ,(car spec))))
+                           ((and (listp spec) (symbolp (car spec))
+                                 (symbolp (cadr spec)) (null (cddr spec)))
+                            `(,(car spec) (plist-get ,plist ,(cadr spec))))
+                           (t (error "Malformed binder %s" spec))))
+                     prop-specs)
+         ,@forms))))
+
 (cl-defmacro defblog (name source-directory blog-title
                            &key
                            blog-url blog-desc
