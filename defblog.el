@@ -275,9 +275,6 @@ arguments:
         ;; expansion.
         (site-plist-var (intern (concatenate 'string
                                   "+defblog/" name "/site-plist+")))
-        (category-plists-hash (intern (concatenate 'string
-                                        "+defblog/" name
-                                        "/category-plists-hash+")))
 
         ;; Names of global constants associated with this blog.  Each
         ;; of these names is also associated with a DEFVAR in the
@@ -371,13 +368,6 @@ arguments:
        (defvar ,site-plist-var nil
          ,(concatenate 'string "General property list for the " name " blog."))
 
-       (when (boundp ',category-plists-hash)
-         (makunbound ',category-plists-hash))
-       (defvar ,category-plists-hash (make-hash-table :test 'eq)
-         ,(concatenate 'string
-            "Hashtable for holding properties of the categories of the "
-            name " blog."))
-
        ;; Managing temporary directories.  Since the Org source
        ;; directories in ORG-PUBLISH-PROJECT-ALIST are hardcoded, we
        ;; need to fix a directory in /tmp when calling defblog.
@@ -470,18 +460,19 @@ arguments:
          (debug-msg (0 t) "Ensuring clean temporary directories...done")
 
          (debug-msg (0 t) "Setting up defblog temp structures...")
-         (let ((file-plists-hash (make-hash-table :test 'eq)))
+         (let ((file-plists-hash (make-hash-table :test 'eq))
+               (category-plists-hash (make-hash-table :test 'eq)))
 
            (multiple-value-bind (last-blog-update cat-list)
                (defblog/table-setup-fn properties
                    ,gen-directory-var ,source-directory-var
-                   file-plists-hash ,category-plists-hash)
+                   file-plists-hash category-plists-hash)
              (setf ,site-plist-var
                    (list :source-directory ,source-directory-var
                          :temp-directory ,gen-directory-var
                          :publish-directory ,publish-directory-var
                          :file-plists-hash file-plists-hash
-                         :cat-plists-hash ,category-plists-hash
+                         :cat-plists-hash category-plists-hash
                          :category-tags cat-list
                          :sorted-file-plists
                          (sort (hash-table-values file-plists-hash)
@@ -553,7 +544,7 @@ arguments:
 
          (debug-msg (0 t) "Cleaning up defblog temp structures...")
          (clrhash (plist-get ,site-plist-var :file-plists-hash))
-         (clrhash ,category-plists-hash)
+         (clrhash (plist-get ,site-plist-var :cat-plists-hash))
          (setf ,site-plist-var
                (plist-put ,site-plist-var :category-tags nil))
          (debug-msg (0 t) "Cleaning up defblog temp structures...done"))
@@ -952,8 +943,7 @@ directories, to the plist of information about that category."
           full-path cat-tag keyvals (intern cat-tag) plist)
         (puthash (intern cat-tag) plist category-plist-hash)
         (debug-msg (3 :internal) "  %s"
-          (gethash (intern cat-tag)
-                   +defblog/maraist/category-plists-hash+))))))
+          (gethash (intern cat-tag) category-plist-hash))))))
 
 ;;; =================================================================
 ;;; Crossreferencing information built into the hashtables.
