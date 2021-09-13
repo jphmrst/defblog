@@ -4,5 +4,7 @@
 
   - Squashed tabs in the [[./README.md][README.md]] file.
   - Macro for clearer access to property lists.
+  - Simplifying internal APIs by pushing parameters into the site
+    property list.
 
 - 0.1.0 :: Initial numbered release.
