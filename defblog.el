@@ -375,12 +375,6 @@ arguments:
        (defvar ,site-plist-var nil
          ,(concatenate 'string "General property list for the " name " blog."))
 
-       (when (boundp ',file-plists-hash) (makunbound ',file-plists-hash))
-       (defvar ,file-plists-hash (make-hash-table :test 'eq)
-         ,(concatenate 'string
-            "Hashtable for holding properties of the posts and pages of the "
-            name " blog."))
-
        (when (boundp ',category-tags) (makunbound ',category-tags))
        (defvar ,category-tags nil
          ,(concatenate 'string
@@ -485,51 +479,53 @@ arguments:
          (debug-msg (0 t) "Ensuring clean temporary directories...done")
 
          (debug-msg (0 t) "Setting up defblog temp structures...")
-         (multiple-value-bind (last-blog-update cat-list)
-             (defblog/table-setup-fn properties
-                 ,gen-directory-var ,source-directory-var
-                 ,file-plists-hash ,category-plists-hash)
-           (setf ,category-tags cat-list)
-           (setf ,site-plist-var
-                 (list :source-directory ,source-directory-var
-                       :temp-directory ,gen-directory-var
-                       :publish-directory ,publish-directory-var
-                       :file-plists-hash ,file-plists-hash
-                       :cat-plists-hash ,category-plists-hash
-                       :category-tags ,category-tags
-                       :sorted-file-plists
-                       (sort (hash-table-values ,file-plists-hash)
-                             #'(lambda (x y)
-                                 (time-less-p (plist-get y :mod)
-                                              (plist-get x :mod))))
-                       :title ,blog-title :desc ,blog-desc :url ,blog-url
-                       :post-copy-fn #',post-copy-function
-                       :page-copy-fn #',page-copy-function
-                       :sitemap-default-priority ,sitemap-default-priority
-                       :sitemap-default-change-freq
-                       ',sitemap-default-change-freq
-                       :last-update last-blog-update
-                       :default-author-name ,default-author-name
-                       :generate-xml-sitemap ,generate-xml-sitemap
-                       :generate-rss ,generate-rss
-                       :generate-atom ,generate-atom
-                       :generate-htaccess ,generate-htaccess
-                       :feed-entry-sunset-predicate ,feed-entry-sunset-pred)))
-         (debug-msg (0 t) "Setting up defblog temp structures...done")
-         (,state-dump-fn)
+         (let ((file-plists-hash (make-hash-table :test 'eq)))
 
-         ;; The setup for the front page is just to copy it in to its
-         ;; scratch area.
-         (let ((source-org (concatenate 'string
-                             (plist-get ,site-plist-var :source-directory)
-                             "index.org")))
-           (,front-copy-function source-org
-                                 (concatenate 'string
-                                   (plist-get ,site-plist-var :temp-directory)
-                                   "front/index.org")
-                                 ,site-plist-var
-                                 (gethash (intern source-org)
-                                          ,file-plists-hash))))
+           (multiple-value-bind (last-blog-update cat-list)
+               (defblog/table-setup-fn properties
+                   ,gen-directory-var ,source-directory-var
+                   file-plists-hash ,category-plists-hash)
+             (setf ,category-tags cat-list)
+             (setf ,site-plist-var
+                   (list :source-directory ,source-directory-var
+                         :temp-directory ,gen-directory-var
+                         :publish-directory ,publish-directory-var
+                         :file-plists-hash file-plists-hash
+                         :cat-plists-hash ,category-plists-hash
+                         :category-tags ,category-tags
+                         :sorted-file-plists
+                         (sort (hash-table-values file-plists-hash)
+                               #'(lambda (x y)
+                                   (time-less-p (plist-get y :mod)
+                                                (plist-get x :mod))))
+                         :title ,blog-title :desc ,blog-desc :url ,blog-url
+                         :post-copy-fn #',post-copy-function
+                         :page-copy-fn #',page-copy-function
+                         :sitemap-default-priority ,sitemap-default-priority
+                         :sitemap-default-change-freq
+                         ',sitemap-default-change-freq
+                         :last-update last-blog-update
+                         :default-author-name ,default-author-name
+                         :generate-xml-sitemap ,generate-xml-sitemap
+                         :generate-rss ,generate-rss
+                         :generate-atom ,generate-atom
+                         :generate-htaccess ,generate-htaccess
+                         :feed-entry-sunset-predicate ,feed-entry-sunset-pred)))
+           (debug-msg (0 t) "Setting up defblog temp structures...done")
+           (,state-dump-fn)
+
+           ;; The setup for the front page is just to copy it in to its
+           ;; scratch area.
+           (let ((source-org (concatenate 'string
+                               (plist-get ,site-plist-var :source-directory)
+                               "index.org")))
+             (,front-copy-function source-org
+                                   (concatenate 'string
+                                     (plist-get ,site-plist-var :temp-directory)
+                                     "front/index.org")
+                                   ,site-plist-var
+                                   (gethash (intern source-org)
+                                            file-plists-hash)))))
 
        (defun ,overall-cleanup-fn (properties)
 
@@ -566,7 +562,7 @@ arguments:
             (debug-msg (0 t) "Uploading not selected")))
 
          (debug-msg (0 t) "Cleaning up defblog temp structures...")
-         (clrhash ,file-plists-hash)
+         (clrhash (plist-get ,site-plist-var :file-plists-hash))
          (clrhash ,category-plists-hash)
          (setf ,category-tags nil)
          (debug-msg (0 t) "Cleaning up defblog temp structures...done"))
