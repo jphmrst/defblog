@@ -285,8 +285,6 @@ arguments:
                                          "+defblog/" name "/pub-basedir+")))
         (gen-directory-var (intern (concatenate 'string
                                      "+defblog/" name "/tmp-basedir+")))
-        (get-pages-directory-var
-         (intern (concatenate 'string "+defblog/" name "/pages-basedir+")))
         (gen-cat-indices-directory-var
          (intern (concatenate 'string "+defblog/" name "/cat-indices+")))
         (gen-statics-directory (intern (concatenate 'string
@@ -402,14 +400,6 @@ arguments:
               (t system-tmp-dir-var))
          ,(concatenate 'string
             "Scratch space directory for the " name " blog."))
-
-       (when (boundp ',get-pages-directory-var)
-         (makunbound ',get-pages-directory-var))
-       (defvar ,get-pages-directory-var
-           (concatenate 'string ,gen-directory-var "pages/")
-         ,(concatenate 'string
-            "Scratch space for copying non-index top-level pages for the "
-            name " blog."))
 
        (when (boundp ',gen-cat-indices-directory-var)
          (makunbound ',gen-cat-indices-directory-var))
@@ -597,7 +587,8 @@ arguments:
              (pages-entry
               (list :preparation-function ',pages-prep-fn
                     :publishing-function 'org-html-publish-to-html
-                    :base-directory ,get-pages-directory-var
+                    :base-directory (concatenate 'string
+                                      ,gen-directory-var "pages/")
                     :publishing-directory ,publish-directory-var
                     :exclude "index.org"
                     :html-postamble "<a href=\"./\">Back to the top</a>."
