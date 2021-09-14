@@ -285,10 +285,6 @@ arguments:
                                          "+defblog/" name "/pub-basedir+")))
         (gen-directory-var (intern (concatenate 'string
                                      "+defblog/" name "/tmp-basedir+")))
-        (gen-cat-indices-directory-var
-         (intern (concatenate 'string "+defblog/" name "/cat-indices+")))
-        (gen-statics-directory (intern (concatenate 'string
-                                         "+defblog/" name "/gen-statics+")))
 
         ;; Names of functions associated with this blog.  Each of
         ;; these names is associated with a DEFUN in the macro
@@ -400,23 +396,7 @@ arguments:
               (t system-tmp-dir-var))
          ,(concatenate 'string
             "Scratch space directory for the " name " blog."))
-
-       (when (boundp ',gen-cat-indices-directory-var)
-         (makunbound ',gen-cat-indices-directory-var))
-       (defvar ,gen-cat-indices-directory-var
-           (concatenate 'string ,gen-directory-var "cat-indices/")
-         ,(concatenate 'string
-            "Scratch space area for generating category index files for the "
-            name " blog."))
-
-       (when (boundp ',gen-statics-directory)
-         (makunbound ',gen-statics-directory))
-       (defvar ,gen-statics-directory
-           (concatenate 'string ,gen-directory-var "gen-statics/")
-         ,(concatenate 'string
-            "Scratch space area for generating XML files for the "
-            name " blog."))
-       
+
        ;; DEFUNs used in the ORG-PUBLISH-PROJECT-ALIST clauses for
        ;; this blog.  Each of these will add additional blog-specific
        ;; parameters to a call to a related function defined after
@@ -609,7 +589,8 @@ arguments:
              (cat-indices-entry
               (list :preparation-function ',cat-indices-prep-fn
                     :publishing-function 'org-html-publish-to-html
-                    :base-directory ,gen-cat-indices-directory-var
+                    :base-directory (concatenate 'string
+                                      ,gen-directory-var "cat-indices/")
                     :publishing-directory ,publish-directory-var
                     :html-postamble
                     "<a href=\"../\">Back to the top</a>."
@@ -633,7 +614,8 @@ arguments:
               (list :publishing-function 'org-publish-attachment
                     :preparation-function ',gen-statics-prep-fn
                     :completion-function ',overall-cleanup-fn
-                    :base-directory ,gen-statics-directory
+                    :base-directory (concatenate 'string
+                                      ,gen-directory-var "gen-statics/")
                     :base-extension "xml"
                     :publishing-directory ,publish-directory-var
                     :recursive t))
