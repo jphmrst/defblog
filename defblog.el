@@ -99,6 +99,7 @@
                             '(lambda (cat-plist blog-title)
                               (concatenate 'string
                                 blog-title ": " (plist-get cat-plist :title))))
+                           (postdate-policy :hide)
                            ;;
                            css-style-rel-path
                            frontpage-css-style-rel-path
@@ -165,6 +166,12 @@ directories is erased after generation; however
 RETAIN-PUBLISHED-DIRECTORY and RETAIN-GENERATED-DIRECTORIES may
 be set to non-null values to keep the directories' contents
 instead.
+- The POSTDATE-POLICY specifies how DEFBLOG will treat posts and
+pages whose date is later than the current time when the site is
+published.  The default value is :hide, meaning that these pages
+should not be included or indexed in the published site.  The other
+valid setting for this option is :show, meaning that these pages
+should be included and indexed.
 - CSS-STYLE-SUBPATH, the local path from the SOURCE-DIRECTORY to
 default CSS stylesheet for the blog.
 - FRONTPAGE-CSS-STYLE-REL-PATH, PAGE-CSS-STYLE-REL-PATH,
@@ -201,9 +208,9 @@ which expands certain pragmas in Org-mode comments to additional
 content (see that function's documentation for additional
 information).  These copier functions are provided via two
 arguments:
- 1. POST-COPY-FUNCTION, applied to posts.
- 2. FRONT-COPY-FUNCTION, applied to the top-level page.
-"
+ 1. PAGE-COPY-FUNCTION, applied to toplevel pages.
+ 2. POST-COPY-FUNCTION, applied to posts under a category.
+ 3. FRONT-COPY-FUNCTION, applied to the top level page."
   (declare (indent 3))
 
   ;; Check fatal combinations of present/missing arguments.
@@ -216,6 +223,9 @@ arguments:
 
   (unless (or (null upload) (eq upload :rsync))
     (error "Unrecognized value for upload: %s" upload))
+
+  (unless (member postdate-policy '(:hide :show))
+    (error "Unrecognized :postdate-policy %s" postdate-policy))
 
   (when (and (null upload) (null published-directory))
     (warn
@@ -405,6 +415,7 @@ arguments:
                          :title ,blog-title :desc ,blog-desc :url ,blog-url
                          :post-copy-fn #',post-copy-function
                          :page-copy-fn #',page-copy-function
+                         :postdate-policy ,postdate-policy
                          :category-index-css-path
                          ,category-index-css-style-rel-path
                          :category-index-title-fn #',cat-index-title-fn
@@ -418,7 +429,8 @@ arguments:
                          :generate-atom ,generate-atom
                          :generate-htaccess ,generate-htaccess
                          :feed-entry-sunset-predicate
-                         ,feed-entry-sunset-pred)))
+                         ,feed-entry-sunset-pred
+                         :start-time (current-time))))
            (debug-msg (0 t) "Setting up defblog temp structures...done")
            (,state-dump-fn)
 
@@ -839,11 +851,13 @@ directories, to the plist of information about that category."
                   :draft is-draft
                   :cat cat-tag
                   :author-name (nth 1 (assoc "AUTHOR_NAME" keyvals))
-                  :date post-date :updated post-updated
+                  :date post-date
+                  :updated post-updated
                   :old-urls (when (its (nth 1 (assoc "OLD_URL" keyvals)))
                               (split-string (it) " *, *"))
                   :mod post-mod
-                  :sitemap-priority priority :change-freq change-freq)
+                  :sitemap-priority priority
+                  :change-freq change-freq)
             post-date post-updated)))
 
 (defun defblog/reset-categories-list (source-directory)
@@ -977,13 +991,23 @@ Returns the date of last modification to site files.
   "Decide whether a particular file (page or post) should be published.
 FILE-PLIST and SITE-PLIST are the property lists specifying the particular
 page, and the site in general."
-  (with-plist-properties ((is-draft :draft))
-      file-plist
-    (let ((result (not is-draft)))
-      (debug-msg (4 :draft)
-          "Checking publish-p of %s: draft flag %s => %s"
-        (plist-get file-plist :path) is-draft result)
-      result)))
+  (with-plist-properties ((start-time :start-time)
+                          (postdate-policy :postdate-policy))
+      site-plist
+    (with-plist-properties ((is-draft :draft)
+                            (publish-date :date))
+        file-plist
+      ;; If it's a draft, we do not publish
+      (let ((result (and (not is-draft)
+                         ;; Make sure that either the postdated policy
+                         ;; is to show postdated files, *or* that this
+                         ;; file was published before the start-time.
+                         (or (eq postdate-policy :show)
+                             (time-less-p publish-date start-time)))))
+        (debug-msg (4 :draft)
+            "Checking publish-p of %s: draft flag %s => %s"
+          (plist-get file-plist :path) is-draft result)
+        result))))
 
 
 ;;; =================================================================

@@ -87,6 +87,13 @@ Optional parameters:
   `retain-published-directory` and `retain-generated-directory`
   arguments.
 
+- The `:postdate-policy` specifies how `defblog` will treat posts and
+  pages whose date is later than the current time when the site is
+  published.  The default value is `:hide`, meaning that these pages
+  should not be included or indexed in the published site.  The other
+  valid setting for this option is `:show`, meaning that these pages
+  should be included and indexed.
+
 - The `css-style-rel-path` argument specifies the local path from the
   `source-directory` to the default CSS stylesheet for the blog.
 
@@ -105,12 +112,12 @@ Optional parameters:
   for the various classes of document.  Their values are checked for a
   `null` or non-`null` setting.
 
-- The `post-copy-function` and `front-copy-function` arguments specify
-  how a file in the temporary directories are made from the various
-  source Org files.  The default is `defblog/page-copy-verbatim`,
-  which simply copies the source file.  Other options, and the
-  protocol for writing a custom function, are discussed in the
-  *Processing files* section below.
+- The `post-copy-function`, `page-copy-function` and
+  `front-copy-function` arguments specify how a file in the temporary
+  directories are made from the various source Org files.  The default
+  is `defblog/page-copy-verbatim`, which simply copies the source
+  file.  Other options, and the protocol for writing a custom
+  function, are discussed in the *Processing files* section below.
 
 - The `generate-xml-sitemap`, `generate-rss` and `generate-atom`
   arguments indicate whether the published blog should include these

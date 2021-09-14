@@ -1,10 +1,15 @@
 # -*- org -*-
 
-- 0.1.1 (general-dev) :: Currently in development branch(es).
+- 0.2.0 (general-dev) :: Currently in development branch(es).
 
-  - Squashed tabs in the [[./README.md][README.md]] file.
-  - Macro for clearer access to property lists.
+  - Implement the DRAFT file property to suppress publishing
+    individual pages/posts.
+  - Mindfully handle posts and pages whose publication date is after
+    the current time when building the site, governed by the
+    `:postdate-policy` argument to the top-level `defblog` macro.
   - Simplifying internal APIs by pushing parameters into the site
     property list.
+  - Macro for clearer access to property lists.
+  - Squashed tabs in the [[./README.md][README.md]] file.
 
 - 0.1.0 :: Initial numbered release.
