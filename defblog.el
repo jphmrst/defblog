@@ -33,11 +33,14 @@
 ;; README.md file is more of a manual; comments in this file are more
 ;; of a guide to the implementation (for me as much as for you).
 
-;; ADDING A FILE PROPERTY.  The file properties are processed in
-;; DEFBLOG/FORMAT-ORGPROPS-PLIST.  There is a translation between the
-;; (usually all-caps) names used for file properties, and the (usually
-;; Lisp keyword) keys for the property list, it is necessary to add
-;; the new property explicitly there.
+;; ADDING AND USING A FILE PROPERTY.  The file properties are
+;; processed in DEFBLOG/FORMAT-ORGPROPS-PLIST.  There is a translation
+;; between the (usually all-caps) names used for file properties, and
+;; the (usually Lisp keyword) keys for the property list, it is
+;; necessary to add the new property explicitly there.
+
+;; ADDING AND USING A CATEGORY PROPERTY.  The category properties are
+;; set up in DEFBLOG/RESET-CATEGORIES-PLIST-HASH.
 
 ;;; Code:
 (require 'anaphora-anywhere)
@@ -48,8 +51,8 @@
   `(progn ,@forms) ;; nil
   )
 
-(defconst +defblog/debug-level+ 0)
-(defconst +defblog/debug-topics+ nil) ;; '(:control :draft))
+(defconst +defblog/debug-level+ 4)
+(defconst +defblog/debug-topics+ '(:draft)) ;; '(:control :draft))
 (cl-defmacro debug-msg ((level topic-or-topics) &rest args)
   (declare (indent 2))
   (when (and (<= level +defblog/debug-level+)
@@ -1009,6 +1012,20 @@ page, and the site in general."
           (plist-get file-plist :path) is-draft result)
         result))))
 
+(defun defblog/publish-category-p (category-plist site-plist)
+  "Decide whether a particular category should be published.
+CATEGORY-PLIST and SITE-PLIST are the property lists specifying the particular
+category, and the site in general."
+  (with-plist-properties ((post-files :post-files)) category-plist
+
+    ;; If the category is not associated with any files, then we do
+    ;; not publish.
+    (let ((result (not (null post-files))))
+      (debug-msg (4 :draft)
+          "Checking publish-category-p of %s: post-files %s => %s"
+        (plist-get category-plist :title) post-files result)
+      result)))
+
 
 ;;; =================================================================
 ;;; Generating non-ORG/HTML files.
@@ -1107,44 +1124,43 @@ structures of the blog artifacts."
                   (plist-get file-plist :change-freq) nil default-change-freq
                   (plist-get file-plist :priority) nil default-priority))))
         (dolist (cat-plist (hash-table-values cat-plist-hash))
-          ;; TODO Check category publishability by whether it actually
-          ;; contains pages.
-          (with-plist-properties ((cat-tag :tag)
-                                  (cat-dir :src-dir))
-              cat-plist
-            (defblog/write-xml-sitemap-entry
-                (concatenate 'string site-url cat-tag "/")
-                (plist-get cat-plist :latest-post) nil
-                nil (plist-get cat-plist :change-freq) default-change-freq
-                nil (plist-get cat-plist :sitemap-priority) default-priority)
+          (when (defblog/publish-category-p cat-plist site-plist)
+            (with-plist-properties ((cat-tag :tag)
+                                    (cat-dir :src-dir))
+                cat-plist
+              (defblog/write-xml-sitemap-entry
+                  (concatenate 'string site-url cat-tag "/")
+                  (plist-get cat-plist :latest-post) nil
+                  nil (plist-get cat-plist :change-freq) default-change-freq
+                  nil (plist-get cat-plist :sitemap-priority) default-priority)
 
-            (dolist (file (plist-get cat-plist :post-files))
-              (debug-msg (3 :internal) "File %s" file)
-              (let* ((file-fullpath (concatenate 'string
-                                      (plist-get cat-plist :src-dir) file))
-                     (file-plist (gethash (intern file-fullpath)
-                                          file-plist-hash)))
-                (debug-msg (3 :internal) "     plist %s" file-plist)
-                (when (defblog/publish-p file-plist site-plist)
-                  (let* ((base-file-src (plist-get file-plist :bare))
-                         (page-url
-                          (concatenate 'string
-                            site-url cat-tag "/"
-                            (replace-regexp-in-string "\\.org$" ".html"
-                              base-file-src))))
-                    (with-plist-properties ((date :date)
-                                            (updated :updated)
-                                            (file-change-freq :change-freq)
-                                            (file-priority :sitemap-priority))
-                        file-plist
-                      (with-plist-properties ((cat-change-freq :change-freq)
-                                              (cat-priority :sitemap-priority))
-                          cat-plist
-                        (defblog/write-xml-sitemap-entry
-                            page-url date updated
-                            file-change-freq cat-change-freq
-                            default-change-freq file-priority cat-priority
-                            default-priority)))))))))
+              (dolist (file (plist-get cat-plist :post-files))
+                (debug-msg (3 :internal) "File %s" file)
+                (let* ((file-fullpath (concatenate 'string
+                                        (plist-get cat-plist :src-dir) file))
+                       (file-plist (gethash (intern file-fullpath)
+                                            file-plist-hash)))
+                  (debug-msg (3 :internal) "     plist %s" file-plist)
+                  (when (defblog/publish-p file-plist site-plist)
+                    (let* ((base-file-src (plist-get file-plist :bare))
+                           (page-url
+                            (concatenate 'string
+                              site-url cat-tag "/"
+                              (replace-regexp-in-string "\\.org$" ".html"
+                                base-file-src))))
+                      (with-plist-properties ((date :date)
+                                              (updated :updated)
+                                              (file-change-freq :change-freq)
+                                              (file-priority :sitemap-priority))
+                          file-plist
+                        (with-plist-properties ((cat-change-freq :change-freq)
+                                                (cat-priority :sitemap-priority))
+                            cat-plist
+                          (defblog/write-xml-sitemap-entry
+                              page-url date updated
+                              file-change-freq cat-change-freq
+                              default-change-freq file-priority cat-priority
+                              default-priority))))))))))
         (insert "</urlset>\n")))))
 
 ;; TODO Just pass in the site-plist and file-plist here.
@@ -1220,23 +1236,23 @@ blog artifacts.
 
       ;; First write the RSS files for each category.
       (dolist (category-tag category-tags)
-        ;; TODO Check category publishability
         (let* ((cat-out-dir (concatenate 'string gen-basedir category-tag "/"))
                (cat-properties (gethash (intern category-tag) cat-plist-hash))
                (cat-html-url (concatenate 'string blog-url category-tag "/")))
-          (unless (file-directory-p cat-out-dir)
-            (make-directory cat-out-dir))
-          (with-temp-file (concatenate 'string cat-out-dir "rss.xml")
-            (defblog/write-rss-opening (concatenate 'string
-                                         blog-name ": "
-                                         (plist-get cat-properties :title))
-                (plist-get cat-properties :description)
-              (concatenate 'string cat-html-url "rss.xml")
-              cat-html-url
-              (plist-get cat-properties :latest-mod))
-            (defblog/write-category-rss-entries category-tag cat-properties
-              source-directory file-plist-hash feed-entry-sunset-pred)
-            (defblog/write-rss-closing))))
+          (when (defblog/publish-category-p cat-properties site-plist)
+            (unless (file-directory-p cat-out-dir)
+              (make-directory cat-out-dir))
+            (with-temp-file (concatenate 'string cat-out-dir "rss.xml")
+              (defblog/write-rss-opening (concatenate 'string
+                                           blog-name ": "
+                                           (plist-get cat-properties :title))
+                  (plist-get cat-properties :description)
+                (concatenate 'string cat-html-url "rss.xml")
+                cat-html-url
+                (plist-get cat-properties :latest-mod))
+              (defblog/write-category-rss-entries category-tag cat-properties
+                source-directory file-plist-hash feed-entry-sunset-pred)
+              (defblog/write-rss-closing)))))
 
       ;; Now write the main RSS file, with the entries from each category.
       (with-temp-file (concatenate 'string gen-basedir "rss.xml")
@@ -1370,69 +1386,71 @@ the feed."
         (defblog/write-atom-opening blog-name blog-desc
           (concatenate 'string blog-url "atom.xml") blog-url blog-last-mod)
         (dolist (category-tag category-tags)
-          ;; TODO Check category publishability.
-          (let* ((cat-src-dir (concatenate 'string
-                                source-directory category-tag "/"))
-                 (post-fullpaths
-                  (file-expand-wildcards (concatenate 'string
-                                           cat-src-dir "*.org")))
-                 (file-plists (mapcar #'(lambda (p)
-                                          (defblog/fetch-file-plist p
-                                              file-plist-hash))
-                                      post-fullpaths))
-                 (cat-properties (gethash (intern category-tag)
-                                          cat-plist-hash)))
-            (dolist (plist file-plists)
-              (when (defblog/publish-p plist site-plist)
-                (defblog/write-atom-for-plist plist cat-properties
-                  default-author-name)))))
+          ;; Check category publishability.
+          (let ((cat-properties (gethash (intern category-tag) cat-plist-hash)))
+            (when (defblog/publish-category-p cat-properties site-plist)
+              (let* ((cat-src-dir (concatenate 'string
+                                    source-directory category-tag "/"))
+                     (post-fullpaths
+                      (file-expand-wildcards (concatenate 'string
+                                               cat-src-dir "*.org")))
+                     (file-plists (mapcar #'(lambda (p)
+                                              (defblog/fetch-file-plist p
+                                                  file-plist-hash))
+                                          post-fullpaths)))
+                (dolist (plist file-plists)
+                  (when (defblog/publish-p plist site-plist)
+                    (defblog/write-atom-for-plist plist cat-properties
+                      default-author-name)))))))
 
         (defblog/write-atom-closing))
 
       (dolist (category-tag category-tags)
-        ;; TODO Check category publishability.
-        (let* ((cat-src-dir (concatenate 'string
-                              source-directory category-tag "/"))
-               (post-fullpaths (file-expand-wildcards (concatenate 'string
-                                                        cat-src-dir "*.org")))
-               (file-plists (mapcar #'(lambda (p) (defblog/fetch-file-plist p
-                                                      file-plist-hash))
-                                    post-fullpaths))
-               (cat-properties (gethash (intern category-tag) cat-plist-hash))
+        ;; Check category publishability.
+        (let ((cat-properties (gethash (intern category-tag) cat-plist-hash)))
+          (when (defblog/publish-category-p cat-properties site-plist)
 
-               (cat-atom-title (concatenate 'string blog-name ": "
-                                            (plist-get cat-properties :title)))
-               (cat-desc (plist-get cat-properties :description))
-               (cat-last-mod-date (plist-get cat-properties :latest-mod))
-               (cat-html-url (concatenate 'string blog-url category-tag "/"))
-               (cat-atom-url (concatenate 'string cat-html-url "atom.xml"))
+            (let* ((cat-src-dir (concatenate 'string
+                                  source-directory category-tag "/"))
+                   (post-fullpaths (file-expand-wildcards (concatenate 'string
+                                                            cat-src-dir "*.org")))
+                   (file-plists (mapcar #'(lambda (p) (defblog/fetch-file-plist p
+                                                          file-plist-hash))
+                                        post-fullpaths))
 
-               (cat-out-dir (concatenate 'string
-                              gen-basedir category-tag "/")))
+                   (cat-atom-title (concatenate 'string blog-name ": "
+                                                (plist-get cat-properties :title)))
+                   (cat-desc (plist-get cat-properties :description))
+                   (cat-last-mod-date (plist-get cat-properties :latest-mod))
+                   (cat-html-url (concatenate 'string blog-url category-tag "/"))
+                   (cat-atom-url (concatenate 'string cat-html-url "atom.xml"))
 
-          (unless (file-directory-p cat-out-dir)
-            (make-directory cat-out-dir))
+                   (cat-out-dir (concatenate 'string
+                                  gen-basedir category-tag "/")))
 
-          (with-temp-file (concatenate 'string cat-out-dir "atom.xml")
+              (unless (file-directory-p cat-out-dir)
+                (make-directory cat-out-dir))
 
-            (defblog/write-atom-opening cat-atom-title cat-desc
-              cat-atom-url cat-html-url cat-last-mod-date)
+              (with-temp-file (concatenate 'string cat-out-dir "atom.xml")
 
-            (dolist (plist file-plists)
-              (when (defblog/publish-p plist site-plist)
-                ;; Only add things from the last (let's say) five years.
+                (defblog/write-atom-opening cat-atom-title cat-desc
+                  cat-atom-url cat-html-url cat-last-mod-date)
 
-                (debug-msg (3 :internal)
-                    "- Considering post for Atom feed: %s (%s)"
-                  (plist-get plist :bare)
-                  (format-time-string "%d %b %Y"
-                                      (plist-get plist :mod)))
-                (when (funcall feed-entry-sunset-pred (plist-get plist :mod))
-                  (debug-msg (3 :internal) "  Added")
-                  (defblog/write-atom-for-plist plist cat-properties
-                    default-author-name))))
+                (dolist (plist file-plists)
+                  (when (defblog/publish-p plist site-plist)
+                    ;; Only add things from the last (let's say) five years.
 
-            (defblog/write-atom-closing)))))))
+                    (debug-msg (3 :internal)
+                        "- Considering post for Atom feed: %s (%s)"
+                      (plist-get plist :bare)
+                      (format-time-string "%d %b %Y"
+                                          (plist-get plist :mod)))
+                    (when (funcall feed-entry-sunset-pred (plist-get plist :mod))
+                      (debug-msg (3 :internal) "  Added")
+                      (defblog/write-atom-for-plist plist cat-properties
+                        default-author-name))))
+
+                (defblog/write-atom-closing)))))))))
 
 (defconst +rfc-3339-time-format+ "%Y-%m-%dT%H:%M:%S%:z"
   "Format string for RFC3339 Date and Time Specification, used in Atom.")
@@ -1507,23 +1525,26 @@ the feed."
                           (cat-list :category-tags))
       site-plist
     (dolist (cat cat-list)
-      ;; TODO Check category publishability.
-      (let ((cat-src-dir (concatenate 'string source-directory cat "/"))
-            (cat-tmp-dir (concatenate 'string gen-directory "posts/" cat "/")))
-        (when (file-directory-p cat-tmp-dir)
-          (delete-directory cat-tmp-dir t))
-        (make-directory cat-tmp-dir t)
-        (dolist (file (plist-get (gethash (intern cat) cat-plist-hash)
-                                 :post-files))
-          (let* ((file-fullpath (concatenate 'string cat-src-dir file))
-                 (file-plist (gethash (intern file-fullpath) file-plist-hash)))
-            (when (defblog/publish-p file-plist site-plist)
-              (let ((cat-src-file (concatenate 'string cat-src-dir file))
-                    (cat-tmp-file (concatenate 'string cat-tmp-dir file)))
-                (debug-msg (3 :internal) "%s %s" cat-src-file cat-tmp-file)
-                (funcall post-copy-function cat-src-file cat-tmp-file
-                         site-plist
-                         (gethash cat-src-file file-plist-hash))))))))))
+      ;; Check category publishability.
+      (let ((cat-properties (gethash (intern cat) cat-plist-hash)))
+        (when (defblog/publish-category-p cat-properties site-plist)
+          (let ((cat-src-dir (concatenate 'string source-directory cat "/"))
+                (cat-tmp-dir (concatenate 'string
+                               gen-directory "posts/" cat "/")))
+            (when (file-directory-p cat-tmp-dir)
+              (delete-directory cat-tmp-dir t))
+            (make-directory cat-tmp-dir t)
+            (dolist (file (plist-get (gethash (intern cat) cat-plist-hash)
+                                     :post-files))
+              (let* ((file-fullpath (concatenate 'string cat-src-dir file))
+                     (file-plist (gethash (intern file-fullpath) file-plist-hash)))
+                (when (defblog/publish-p file-plist site-plist)
+                  (let ((cat-src-file (concatenate 'string cat-src-dir file))
+                        (cat-tmp-file (concatenate 'string cat-tmp-dir file)))
+                    (debug-msg (3 :internal) "%s %s" cat-src-file cat-tmp-file)
+                    (funcall post-copy-function cat-src-file cat-tmp-file
+                             site-plist
+                             (gethash cat-src-file file-plist-hash))))))))))))
 
 ;;; =================================================================
 ;;; Copying pages into the tmp space
@@ -1587,89 +1608,91 @@ temporary files workspace.  The SITE-PLIST is the full site specification."
 
     ;; For each category, and for its source and scratch directories,
     (dolist (cat cat-tags)
-      ;; TODO Check category publishability.
-      (let* ((cat-src-dir (concatenate 'string source-directory cat "/"))
-             (dest-dir (concatenate 'string
-                         gen-directory "cat-indices/" cat "/"))
-             (dest-org (concatenate 'string dest-dir "index.org"))
+      ;; Check category publishability.
+      (let ((cat-properties (gethash (intern cat) cat-plist-hash)))
+        (when (defblog/publish-category-p cat-properties site-plist)
+          (let* ((cat-src-dir (concatenate 'string source-directory cat "/"))
+                 (dest-dir (concatenate 'string
+                             gen-directory "cat-indices/" cat "/"))
+                 (dest-org (concatenate 'string dest-dir "index.org"))
 
-             (cat-plist (gethash (intern cat) cat-plist-hash))
-             (cat-title (plist-get cat-plist :title)))
-        (debug-msg (3 :internal) "Indexing category %s %s \"%s\""
-          cat cat-plist cat-title)
+                 (cat-plist (gethash (intern cat) cat-plist-hash))
+                 (cat-title (plist-get cat-plist :title)))
+            (debug-msg (3 :internal) "Indexing category %s %s \"%s\""
+              cat cat-plist cat-title)
 
-        ;; Make sure the destination directory exists, and is empty.
-        (debug-msg (3 :internal) "Creating directory %s for %s"
-          dest-dir cat-title)
-        (when (file-directory-p dest-dir) (delete-directory dest-dir t))
-        (make-directory dest-dir t)
+            ;; Make sure the destination directory exists, and is empty.
+            (debug-msg (3 :internal) "Creating directory %s for %s"
+              dest-dir cat-title)
+            (when (file-directory-p dest-dir) (delete-directory dest-dir t))
+            (make-directory dest-dir t)
 
-        ;; Identify the ORG files in the source directory, and retrieve
-        ;; their property lists.
-        (let* ((all-files (directory-files cat-src-dir))
-               (org-files
-                (filter #'(lambda (x)
-                            (and (string-match "\\.org$" x)
-                                 (not (string-match "/index.org$" x))))
-                        all-files)))
-          (debug-msg (3 :internal) "L1 %s %s" org-files dest-org)
+            ;; Identify the ORG files in the source directory, and retrieve
+            ;; their property lists.
+            (let* ((all-files (directory-files cat-src-dir))
+                   (org-files
+                    (filter #'(lambda (x)
+                                (and (string-match "\\.org$" x)
+                                     (not (string-match "/index.org$" x))))
+                            all-files)))
+              (debug-msg (3 :internal) "L1 %s %s" org-files dest-org)
 
-          (with-temp-file dest-org
+              (with-temp-file dest-org
 
-            (insert "#+TITLE: " ; TODO Generalize the title.
-                    (funcall cat-index-title-fn cat-plist blog-title)
-                    "\n#+html_head:  "
-                    "<link rel=stylesheet type=\"text/css\" href=\""
-                    cat-indices-style-link
-                    "\"/>"
-                    "\n\n")
+                (insert "#+TITLE: "     ; TODO Generalize the title.
+                        (funcall cat-index-title-fn cat-plist blog-title)
+                        "\n#+html_head:  "
+                        "<link rel=stylesheet type=\"text/css\" href=\""
+                        cat-indices-style-link
+                        "\"/>"
+                        "\n\n")
 
-            (let* ((full-files (mapcar #'(lambda (x)
-                                           (concatenate 'string
-                                             cat-src-dir x))
-                                       org-files))
-                   (plists (mapcar #'(lambda (x)
-                                       (defblog/fetch-file-plist x
-                                           file-plist-hash))
-                                   full-files))
-                   (sorter #'(lambda (y x) (time-less-p (plist-get x :date)
-                                                        (plist-get y :date)))))
-              (debug-msg (3 :internal)
-                  "Iterating through full-files %s\n  plists %s"
-                full-files plists)
-              (dolist (prop-list (sort plists sorter))
-                (when (defblog/publish-p prop-list site-plist)
-                  (debug-msg (3 :internal) "Destructuring %s" prop-list)
-                  (with-plist-properties ((bare :bare)
-                                          (path :path)
-                                          (title :title)
-                                          (desc :desc)
-                                          (date :date)
-                                          (link :link)
-                                          (updated :updated))
-                      prop-list
-                    (debug-msg (3 :internal)
-                        "- bare %s title \"%s\" desc \"%s\""
-                      bare title desc)
-                    (when (or link bare)
-                      (insert "- @@html:<a href=\""
-                              (cond
-                                (link link)
-                                (t (replace-regexp-in-string "\\.org$" ".html"
-                                     bare)))
-                              "\">"))
-                    (insert (cond (title title) (t "(untitled)")))
-                    (when (or link bare) (insert "</a>@@."))
-                    (when desc (insert " " desc))
-                    (when date
-                      (insert (format-time-string " — /%B %d, %Y/" date)))
-                    (when updated
-                      (cond
-                        (date (insert ", /updated "))
-                        (t (insert "/Last updated ")))
-                      (insert (format-time-string "%B %d, %Y/" updated)))
-                    (when (or date updated) (insert "."))
-                    (insert "\n")))))))))))
+                (let* ((full-files (mapcar #'(lambda (x)
+                                               (concatenate 'string
+                                                 cat-src-dir x))
+                                           org-files))
+                       (plists (mapcar #'(lambda (x)
+                                           (defblog/fetch-file-plist x
+                                               file-plist-hash))
+                                       full-files))
+                       (sorter #'(lambda (y x) (time-less-p (plist-get x :date)
+                                                            (plist-get y :date)))))
+                  (debug-msg (3 :internal)
+                      "Iterating through full-files %s\n  plists %s"
+                    full-files plists)
+                  (dolist (prop-list (sort plists sorter))
+                    (when (defblog/publish-p prop-list site-plist)
+                      (debug-msg (3 :internal) "Destructuring %s" prop-list)
+                      (with-plist-properties ((bare :bare)
+                                              (path :path)
+                                              (title :title)
+                                              (desc :desc)
+                                              (date :date)
+                                              (link :link)
+                                              (updated :updated))
+                          prop-list
+                        (debug-msg (3 :internal)
+                            "- bare %s title \"%s\" desc \"%s\""
+                          bare title desc)
+                        (when (or link bare)
+                          (insert "- @@html:<a href=\""
+                                  (cond
+                                    (link link)
+                                    (t (replace-regexp-in-string "\\.org$" ".html"
+                                         bare)))
+                                  "\">"))
+                        (insert (cond (title title) (t "(untitled)")))
+                        (when (or link bare) (insert "</a>@@."))
+                        (when desc (insert " " desc))
+                        (when date
+                          (insert (format-time-string " — /%B %d, %Y/" date)))
+                        (when updated
+                          (cond
+                            (date (insert ", /updated "))
+                            (t (insert "/Last updated ")))
+                          (insert (format-time-string "%B %d, %Y/" updated)))
+                        (when (or date updated) (insert "."))
+                        (insert "\n")))))))))))))
 
 ;;; =================================================================
 ;;; Debugging utilities
