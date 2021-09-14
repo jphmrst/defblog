@@ -433,6 +433,9 @@ arguments:
                          :title ,blog-title :desc ,blog-desc :url ,blog-url
                          :post-copy-fn #',post-copy-function
                          :page-copy-fn #',page-copy-function
+                         :category-index-css-path
+                         ,category-index-css-style-rel-path
+                         :category-index-title-fn #',cat-index-title-fn
                          :sitemap-default-priority ,sitemap-default-priority
                          :sitemap-default-change-freq
                          ',sitemap-default-change-freq
@@ -507,12 +510,10 @@ arguments:
            (defblog/state-dump ,site-plist-var)))
 
        (defun ,cat-indices-prep-fn (properties)
-         (defblog/cat-indices-prep ,site-plist-var
-             ,category-index-css-style-rel-path #',cat-index-title-fn))
+         (defblog/cat-indices-prep ,site-plist-var))
 
        (defun ,gen-statics-prep-fn (properties)
-         (defblog/gen-statics-prep ,site-plist-var
-           (symbol-name ',sitemap-default-change-freq)))
+         (defblog/gen-statics-prep ,site-plist-var))
 
        (defun ,posts-prep-fn (properties)
          (defblog/posts-prep ,site-plist-var))
@@ -963,7 +964,7 @@ Returns the date of last modification to site files.
 ;;; =================================================================
 ;;; Generating non-ORG/HTML files.
 
-(defun defblog/gen-statics-prep (site-plist default-change-freq)
+(defun defblog/gen-statics-prep (site-plist)
   "Generate XML and other non-ORG/HTML files.
 
 These files should be written to the gen-statics subdirectory of
@@ -1499,12 +1500,10 @@ the feed."
 ;;; =================================================================
 ;;; Building indices of posts in the tmp space
 
-(defun defblog/cat-indices-prep (site-plist
-                                 cat-indices-style-link
-                                 cat-index-title-fn)
+(defun defblog/cat-indices-prep (site-plist)
   "For the \"-cat-indices\" targets, generate category index ORG files.
 These files should be written to the cat-indices subdirectory of the
-temporary files workspace."
+temporary files workspace.  The SITE-PLIST is the full site specification."
   (declare (indent nil))
 
   ;; Pull out site info.
@@ -1513,6 +1512,8 @@ temporary files workspace."
                           (cat-tags :category-tags)
                           (source-directory :source-directory)
                           (gen-directory :temp-directory)
+                          (cat-indices-style-link :category-index-css-path)
+                          (cat-index-title-fn :category-index-title-fn)
                           (blog-title :title))
       site-plist
 
