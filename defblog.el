@@ -285,8 +285,6 @@ arguments:
                                          "+defblog/" name "/pub-basedir+")))
         (gen-directory-var (intern (concatenate 'string
                                      "+defblog/" name "/tmp-basedir+")))
-        (get-posts-directory-var
-         (intern (concatenate 'string "+defblog/" name "/posts-basedir+")))
         (get-pages-directory-var
          (intern (concatenate 'string "+defblog/" name "/pages-basedir+")))
         (gen-cat-indices-directory-var
@@ -404,14 +402,6 @@ arguments:
               (t system-tmp-dir-var))
          ,(concatenate 'string
             "Scratch space directory for the " name " blog."))
-
-       (when (boundp ',get-posts-directory-var)
-         (makunbound ',get-posts-directory-var))
-       (defvar ,get-posts-directory-var
-           (concatenate 'string ,gen-directory-var "posts/")
-         ,(concatenate 'string
-            "Scratch space directory for copying over posts for the "
-            name " blog."))
 
        (when (boundp ',get-pages-directory-var)
          (makunbound ',get-pages-directory-var))
@@ -672,7 +662,8 @@ arguments:
              ;; there.
              (posts-entry
               (list :preparation-function ',posts-prep-fn
-                    :base-directory ,get-posts-directory-var
+                    :base-directory (concatenate 'string
+                                      ,gen-directory-var "posts/")
                     :publishing-directory ,publish-directory-var
                     :html-postamble "<a href=\"../\">Back to the top</a>, or <a href=\"./\">more like this</a>."
                     :recursive t
