@@ -7,7 +7,7 @@ This package offers an all-Emacs solution to maintaining a web site
 
 ## Version
 
-This file describes `defblog` version 0.1.0.
+This file describes `defblog` version 0.2.0.
 
 ## Requirements
 
@@ -176,7 +176,7 @@ Optional parameters:
 This section presents the Org file properties of pages, posts, and
 category specifications that `defblog` reads and uses.
 
-### Properties read from any file
+### Properties applied from any file
 
 These properties are meaningful in both page/post files, and in
 `category.txt` files.
@@ -193,7 +193,7 @@ These properties are meaningful in both page/post files, and in
   Should be a floating-point value between 0.0 and 1.0, with 1.0
   having the highest priority.
 
-### Properties read from page/post files only
+### Properties applied from page/post files only
 
 The properties in this section are not meaningful in `category.txt`
 files.  Date information about categories is synthesized from the
@@ -205,6 +205,8 @@ posts in that category)
   an Atom feed is generated, either this property must be given for
   every post/page, or a non-null value for the DEFAULT-AUTHOR-NAME
   parameter must be provided to DEFBLOG.
+- `DRAFT` If this property is set, then the page is considered a
+  draft, not to be exported for publication.
 
 There are additional page/post file properties applicable only to the
 `defblog/page-copy-with-substitutions` processing function, which are
@@ -383,3 +385,51 @@ the category tag, to the property list for that category.
  - `:cat-plists-hash` is the category property list hash table.
  - `:sorted-file-plists` is a list of file property lists sorted in
    descending order of last-modified date.
+
+## Current TODOs
+
+### Things for 0.2
+
+ - A `PIN` file property for posts that keeps them on the front page
+   and feeds.
+   
+ - Check that a category has posts before generating it, adding it to
+   indices.
+
+### Things to have before calling it Version 1.0
+
+ - Format string for each page list entry in `category.txt` file
+   property.
+
+ - Add options for `CATEGORY-LINKS` pragma in
+   `defblog/page-copy-with-substitutions`.
+  
+ - Develop a scheme for tags, essentially as a virtual superset of
+   categories:
+  
+    - Receive `TAGS` property in posts.
+  
+    - Write `TAG-LINKS` pragma for
+      `defblog/page-copy-with-substitutions`.
+  
+ - Refine `HTACCESS` file generation:
+  
+    - Use the `remote-htaccess` argument for the remote destination of
+      the htaccess file.  If defined:
+  
+       - Generate to a `gen` directory file
+  
+       - Exclude `.htaccess` from rsync file list
+  
+       - Second call to rsync for the htaccess target
+  
+       - Remove this file in cleanup
+  
+ - Add a forwards-list argument to `defblog` for other forwards.
+  
+ - Ignore/warn about index.org source files in the category
+   directories.
+
+### Other ideas and tasks
+
+ - Add a way to create the `Org` for a page/post from scratch/script.

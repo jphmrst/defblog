@@ -6,7 +6,7 @@
 ;; Author: John Maraist <defblog-author@maraist.org>
 ;; Maintainer: John Maraist <defblog-author@maraist.org>
 ;; Keywords: org-publish, web, blog
-;; Version: 0.1.1
+;; Version: 0.2.0
 ;; X-URL: https://github.com/jphmrst/defblog
 
 ;; This program is free software; you can redistribute it and/or modify
@@ -29,47 +29,14 @@
 ;; DEFBLOG is a wrapper around ORG-PUBLISH which allows you to declare
 ;; a simple structured blog.  This package offers an all-Emacs
 ;; solution to maintaining a web site (except for any uploading via
-;; rsync, which DEFBLOG can triggered through ORG-PUBLISH).  For more
-;; information, see the README.md file.
+;; rsync, which DEFBLOG can triggered through ORG-PUBLISH).  The
+;; README.md file is more of a manual; comments in this file are more
+;; of a guide to the implementation (for me as much as for you).
 
-;;; NOTES AND CURRENT TODOs
-
-;;; Things to have before calling it Version 1.0
-
-;; TODO Format string for each page list entry in category.txt file
-;; property.
-;;
-;; TODO Add options for CATEGORY-LINKS pragma in
-;; DEFBLOG/PAGE-COPY-WITH-SUBSTITUTIONS
-;;
-;; Develop a scheme for tags, essentially as a virtual superset of
-;; categories:
-;;
-;; - TODO Receive TAGS property in posts.
-;;
-;; - TODO Write TAG-LINKS pragma for DEFBLOG/PAGE-COPY-WITH-SUBSTITUTIONS.
-;;
-;; Refine HTACCESS file generation:
-;;
-;; - TODO Use the remote-htaccess argument for the remote destination
-;; - of the htaccess file.  If defined:
-;;
-;; -- Generate to a gen directory file
-;;
-;; -- Exclude .htaccess from rsync file list
-;;
-;; -- Second call to rsync for the htaccess target
-;;
-;; -- Remove this file in cleanup
-;;
-;; - TODO Add a forwards-list argument to defdoc for other forwards.
-;;
-;; TODO Ignore/warn about index.org source files in the category
-;; directories.
-
-;;; Other ideas and tasks
-
-;; TODO Add a way to create the ORG for a page/post from scratch.
+;; ADDING A FILE PROPERTY.  The file properties are read in
+;; DEFBLOG/PROCESS-FILE-FOR-HASH, but there's nothing to do there to
+;; add a property --- all of the top-level file properties come in to
+;; the FILE-PLISTs.
 
 ;;; Code:
 (require 'anaphora-anywhere)
@@ -962,6 +929,18 @@ Returns the date of last modification to site files.
     last-blog-update))
 
 ;;; =================================================================
+;;; Utility functions for generators.
+
+(defun defblog/publish-p (file-plist site-plist)
+  "Decide whether a particular file (page or post) should be published.
+FILE-PLIST and SITE-PLIST are the property lists specifying the particular
+page, and the site in general."
+  (with-plist-properties ((is-draft :draft))
+      file-plist
+    (not is-draft)))
+
+
+;;; =================================================================
 ;;; Generating non-ORG/HTML files.
 
 (defun defblog/gen-statics-prep (site-plist)
@@ -1001,21 +980,22 @@ the temporary files workspace.
 
       ;; Check each file in the file plist hash.
       (dolist (file-plist (hash-table-values file-plist-hash))
-        (with-plist-properties ((cat :cat)
-                                (bare :bare)
-                                (old-links :old-urls))
-            file-plist
+        (when (defblog/publish-p file-plist site-plist)
+          (with-plist-properties ((cat :cat)
+                                  (bare :bare)
+                                  (old-links :old-urls))
+              file-plist
 
-          ;; One Redirect per old link to this file.
-          (dolist (old-link old-links)
-            (insert "Redirect "
-                    (replace-regexp-in-string "https?://[^/]+" "" old-link)
-                    " "
-                    blog-url
-                    (cond (cat (concatenate 'string cat "/")) (t ""))
-                    (replace-regexp-in-string "/index.html$" "/"
-                      (replace-regexp-in-string "\\.org$" ".html" bare))
-                    "\n")))))))
+            ;; One Redirect per old link to this file.
+            (dolist (old-link old-links)
+              (insert "Redirect "
+                      (replace-regexp-in-string "https?://[^/]+" "" old-link)
+                      " "
+                      blog-url
+                      (cond (cat (concatenate 'string cat "/")) (t ""))
+                      (replace-regexp-in-string "/index.html$" "/"
+                        (replace-regexp-in-string "\\.org$" ".html" bare))
+                      "\n"))))))))
 
 ;;; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ;;; Generating the XML sitemap
@@ -1044,7 +1024,8 @@ structures of the blog artifacts."
 
         ;; First process the zero-depth files.
         (dolist (file-plist (hash-table-values file-plist-hash))
-          (when (zerop (plist-get file-plist :depth))
+          (when (and (zerop (plist-get file-plist :depth))
+                     (defblog/publish-p file-plist site-plist))
             (debug-msg (3 :internal) "Processing zero-depth %s"
               (plist-get file-plist :path))
             (let* ((page-url (replace-regexp-in-string "/index.html$" "/"
@@ -1056,6 +1037,8 @@ structures of the blog artifacts."
                   (plist-get file-plist :change-freq) nil default-change-freq
                   (plist-get file-plist :priority) nil default-priority))))
         (dolist (cat-plist (hash-table-values cat-plist-hash))
+          ;; TODO Check category publishability by whether it actually
+          ;; contains pages.
           (let ((cat-tag (plist-get cat-plist :tag)))
             (defblog/write-xml-sitemap-entry
                 (concatenate 'string site-url cat-tag "/")
@@ -1064,35 +1047,35 @@ structures of the blog artifacts."
                 nil (plist-get cat-plist :sitemap-priority) default-priority)
 
             (dolist (file (plist-get cat-plist :post-files))
-              (debug-msg (3 :internal) "File %s" file)
-              (let* ((file-fullpath (concatenate 'string
-                                      (plist-get cat-plist :src-dir) file))
-                     (file-plist (gethash (intern file-fullpath)
-                                          file-plist-hash)))
-                (debug-msg (3 :internal) "     plist %s" file-plist)
-                (let* ((base-file-src (plist-get file-plist :bare))
-                       (page-url
-                        (concatenate 'string
-                          site-url cat-tag "/"
-                          (replace-regexp-in-string "\\.org$" ".html"
-                            base-file-src))))
-                  (with-plist-properties ((date :date)
-                                          (updated :updated)
-                                          (file-change-freq :change-freq)
-                                          (file-priority :sitemap-priority))
-                      file-plist
-                    (with-plist-properties ((cat-change-freq :change-freq)
-                                            (cat-priority :sitemap-priority))
-                        cat-plist
-                      (defblog/write-xml-sitemap-entry page-url date updated
-                                                       file-change-freq
-                                                       cat-change-freq
-                                                       default-change-freq
-                                                       file-priority
-                                                       cat-priority
-                                                       default-priority))))))))
+              (when (defblog/publish-p file site-plist)
+                (debug-msg (3 :internal) "File %s" file)
+                (let* ((file-fullpath (concatenate 'string
+                                        (plist-get cat-plist :src-dir) file))
+                       (file-plist (gethash (intern file-fullpath)
+                                            file-plist-hash)))
+                  (debug-msg (3 :internal) "     plist %s" file-plist)
+                  (let* ((base-file-src (plist-get file-plist :bare))
+                         (page-url
+                          (concatenate 'string
+                            site-url cat-tag "/"
+                            (replace-regexp-in-string "\\.org$" ".html"
+                              base-file-src))))
+                    (with-plist-properties ((date :date)
+                                            (updated :updated)
+                                            (file-change-freq :change-freq)
+                                            (file-priority :sitemap-priority))
+                        file-plist
+                      (with-plist-properties ((cat-change-freq :change-freq)
+                                              (cat-priority :sitemap-priority))
+                          cat-plist
+                        (defblog/write-xml-sitemap-entry
+                            page-url date updated
+                            file-change-freq cat-change-freq
+                            default-change-freq file-priority cat-priority
+                            default-priority)))))))))
         (insert "</urlset>\n")))))
 
+;; TODO Just pass in the site-plist and file-plist here.
 (defun defblog/write-xml-sitemap-entry (page-url post-time update-time
                                         page-change-freq
                                         group-default-change-freq
@@ -1165,6 +1148,7 @@ blog artifacts.
 
       ;; First write the RSS files for each category.
       (dolist (category-tag category-tags)
+        ;; TODO Check category publishability
         (let* ((cat-out-dir (concatenate 'string gen-basedir category-tag "/"))
                (cat-properties (gethash (intern category-tag) cat-plist-hash))
                (cat-html-url (concatenate 'string blog-url category-tag "/")))
@@ -1206,6 +1190,8 @@ blog artifacts.
                               post-fullpaths)))
 
     (dolist (plist file-plists)
+      ;; TODO Need to pass in the SITE-PLIST here to check file
+      ;; publishability.
       (debug-msg (3 :internal) "- Considering post for RSS feed: %s (%s)"
         (plist-get plist :bare)
         (format-time-string "%d %b %Y" (plist-get plist :mod)))
@@ -1312,6 +1298,7 @@ the feed."
         (defblog/write-atom-opening blog-name blog-desc
           (concatenate 'string blog-url "atom.xml") blog-url blog-last-mod)
         (dolist (category-tag category-tags)
+          ;; TODO Check category publishability.
           (let* ((cat-src-dir (concatenate 'string
                                 source-directory category-tag "/"))
                  (post-fullpaths
@@ -1324,12 +1311,14 @@ the feed."
                  (cat-properties (gethash (intern category-tag)
                                           cat-plist-hash)))
             (dolist (plist file-plists)
-              (defblog/write-atom-for-plist plist cat-properties
-                default-author-name))))
+              (when (defblog/publish-p plist site-plist)
+                (defblog/write-atom-for-plist plist cat-properties
+                  default-author-name)))))
 
         (defblog/write-atom-closing))
 
       (dolist (category-tag category-tags)
+        ;; TODO Check category publishability.
         (let* ((cat-src-dir (concatenate 'string
                               source-directory category-tag "/"))
                (post-fullpaths (file-expand-wildcards (concatenate 'string
@@ -1358,17 +1347,18 @@ the feed."
               cat-atom-url cat-html-url cat-last-mod-date)
 
             (dolist (plist file-plists)
-              ;; Only add things from the last (let's say) five years.
+              (when (defblog/publish-p plist site-plist)
+                ;; Only add things from the last (let's say) five years.
 
-              (debug-msg (3 :internal)
-                  "- Considering post for Atom feed: %s (%s)"
-                (plist-get plist :bare)
-                (format-time-string "%d %b %Y"
-                                    (plist-get plist :mod)))
-              (when (funcall feed-entry-sunset-pred (plist-get plist :mod))
-                (debug-msg (3 :internal) "  Added")
-                (defblog/write-atom-for-plist plist cat-properties
-                  default-author-name)))
+                (debug-msg (3 :internal)
+                    "- Considering post for Atom feed: %s (%s)"
+                  (plist-get plist :bare)
+                  (format-time-string "%d %b %Y"
+                                      (plist-get plist :mod)))
+                (when (funcall feed-entry-sunset-pred (plist-get plist :mod))
+                  (debug-msg (3 :internal) "  Added")
+                  (defblog/write-atom-for-plist plist cat-properties
+                    default-author-name))))
 
             (defblog/write-atom-closing)))))))
 
@@ -1445,6 +1435,7 @@ the feed."
                           (cat-list :category-tags))
       site-plist
     (dolist (cat cat-list)
+      ;; TODO Check category publishability.
       (let ((cat-src-dir (concatenate 'string source-directory cat "/"))
             (cat-tmp-dir (concatenate 'string gen-directory "posts/" cat "/")))
         (when (file-directory-p cat-tmp-dir)
@@ -1452,14 +1443,16 @@ the feed."
         (make-directory cat-tmp-dir t)
         (dolist (file (plist-get (gethash (intern cat) cat-plist-hash)
                                  :post-files))
-          (let ((cat-src-file (concatenate 'string cat-src-dir file))
-                (cat-tmp-file (concatenate 'string cat-tmp-dir file)))
-            (debug-msg (3 :internal) "%s %s" cat-src-file cat-tmp-file)
-            (funcall post-copy-function cat-src-file cat-tmp-file
-                     site-plist (gethash cat-src-file file-plist-hash))))))))
+          (when (defblog/publish-p file site-plist)
+            (let ((cat-src-file (concatenate 'string cat-src-dir file))
+                  (cat-tmp-file (concatenate 'string cat-tmp-dir file)))
+              (debug-msg (3 :internal) "%s %s" cat-src-file cat-tmp-file)
+              (funcall post-copy-function cat-src-file cat-tmp-file
+                       site-plist
+                       (gethash cat-src-file file-plist-hash)))))))))
 
 ;;; =================================================================
-;;; Copying posts into the tmp space
+;;; Copying pages into the tmp space
 
 (defun defblog/pages-prep (site-plist)
   "Main function for installing non-index top-level pages.
@@ -1484,18 +1477,19 @@ the feed."
       (debug-msg (4 t) "- gen-directory %s" gen-directory)
       ;; Look at all of the file plists
       (dolist (plist (hash-table-values file-plist-hash))
-        ;; Pages have depth zero
-        (when (zerop (plist-get plist :depth))
-          (let ((bare (plist-get plist :bare)))
-            ;; Skip the index file; we treat it separately.
-            (unless (string-match "index.org$" bare)
-              (let ((src-file
-                     (concatenate 'string source-directory bare))
-                    (tmp-file (concatenate 'string tmp-dir bare)))
-                (debug-msg (3 :internal) "%s %s" cat-src-file cat-tmp-file)
-                (funcall page-copy-function src-file tmp-file
-                         site-plist (gethash (intern src-file)
-                                             file-plist-hash))))))))))
+        (when (defblog/publish-p plist site-plist)
+          ;; Pages have depth zero
+          (when (zerop (plist-get plist :depth))
+            (let ((bare (plist-get plist :bare)))
+              ;; Skip the index file; we treat it separately.
+              (unless (string-match "index.org$" bare)
+                (let ((src-file
+                       (concatenate 'string source-directory bare))
+                      (tmp-file (concatenate 'string tmp-dir bare)))
+                  (debug-msg (3 :internal) "%s %s" cat-src-file cat-tmp-file)
+                  (funcall page-copy-function src-file tmp-file
+                           site-plist (gethash (intern src-file)
+                                               file-plist-hash)))))))))))
 
 ;;; =================================================================
 ;;; Building indices of posts in the tmp space
@@ -1519,6 +1513,7 @@ temporary files workspace.  The SITE-PLIST is the full site specification."
 
     ;; For each category, and for its source and scratch directories,
     (dolist (cat cat-tags)
+      ;; TODO Check category publishability.
       (let* ((cat-src-dir (concatenate 'string source-directory cat "/"))
              (dest-dir (concatenate 'string
                          gen-directory "cat-indices/" cat "/"))
@@ -1569,36 +1564,38 @@ temporary files workspace.  The SITE-PLIST is the full site specification."
                   "Iterating through full-files %s\n  plists %s"
                 full-files plists)
               (dolist (prop-list (sort plists sorter))
-                (debug-msg (3 :internal) "Destructuring %s" prop-list)
-                (with-plist-properties ((bare :bare)
-                                        (path :path)
-                                        (title :title)
-                                        (desc :desc)
-                                        (date :date)
-                                        (link :link)
-                                        (updated :updated))
-                    prop-list
-                  (debug-msg (3 :internal) "- bare %s title \"%s\" desc \"%s\""
-                    bare title desc)
-                  (when (or link bare)
-                    (insert "- @@html:<a href=\""
-                            (cond
-                              (link link)
-                              (t (replace-regexp-in-string "\\.org$" ".html"
-                                   bare)))
-                            "\">"))
-                  (insert (cond (title title) (t "(untitled)")))
-                  (when (or link bare) (insert "</a>@@."))
-                  (when desc (insert " " desc))
-                  (when date
-                    (insert (format-time-string " — /%B %d, %Y/" date)))
-                  (when updated
-                    (cond
-                      (date (insert ", /updated "))
-                      (t (insert "/Last updated ")))
-                    (insert (format-time-string "%B %d, %Y/" updated)))
-                  (when (or date updated) (insert "."))
-                  (insert "\n"))))))))))
+                (when (defblog/publish-p prop-list site-plist)
+                  (debug-msg (3 :internal) "Destructuring %s" prop-list)
+                  (with-plist-properties ((bare :bare)
+                                          (path :path)
+                                          (title :title)
+                                          (desc :desc)
+                                          (date :date)
+                                          (link :link)
+                                          (updated :updated))
+                      prop-list
+                    (debug-msg (3 :internal)
+                        "- bare %s title \"%s\" desc \"%s\""
+                      bare title desc)
+                    (when (or link bare)
+                      (insert "- @@html:<a href=\""
+                              (cond
+                                (link link)
+                                (t (replace-regexp-in-string "\\.org$" ".html"
+                                     bare)))
+                              "\">"))
+                    (insert (cond (title title) (t "(untitled)")))
+                    (when (or link bare) (insert "</a>@@."))
+                    (when desc (insert " " desc))
+                    (when date
+                      (insert (format-time-string " — /%B %d, %Y/" date)))
+                    (when updated
+                      (cond
+                        (date (insert ", /updated "))
+                        (t (insert "/Last updated ")))
+                      (insert (format-time-string "%B %d, %Y/" updated)))
+                    (when (or date updated) (insert "."))
+                    (insert "\n")))))))))))
 
 ;;; =================================================================
 ;;; Debugging utilities
