@@ -33,10 +33,11 @@
 ;; README.md file is more of a manual; comments in this file are more
 ;; of a guide to the implementation (for me as much as for you).
 
-;; ADDING A FILE PROPERTY.  The file properties are read in
-;; DEFBLOG/PROCESS-FILE-FOR-HASH, but there's nothing to do there to
-;; add a property --- all of the top-level file properties come in to
-;; the FILE-PLISTs.
+;; ADDING A FILE PROPERTY.  The file properties are processed in
+;; DEFBLOG/FORMAT-ORGPROPS-PLIST.  There is a translation between the
+;; (usually all-caps) names used for file properties, and the (usually
+;; Lisp keyword) keys for the property list, it is necessary to add
+;; the new property explicitly there.
 
 ;;; Code:
 (require 'anaphora-anywhere)
@@ -48,7 +49,7 @@
   )
 
 (defconst +defblog/debug-level+ 0)
-(defconst +defblog/debug-topics+ '(:control))
+(defconst +defblog/debug-topics+ nil) ;; '(:control :draft))
 (cl-defmacro debug-msg ((level topic-or-topics) &rest args)
   (declare (indent 2))
   (when (and (<= level +defblog/debug-level+)
@@ -369,6 +370,10 @@ arguments:
        ;; this macro expansion.
 
        (defun ,overall-setup-fn (properties)
+         (debug-msg (1 :control)
+             ,(concatenate 'string
+                "Starting " (symbol-name overall-setup-fn)
+                ", prep for top-page-entry"))
 
          (debug-msg (0 t) "Ensuring clean temporary directories...")
          (ensure-ready-work-dir ,publish-directory-var)
@@ -429,7 +434,11 @@ arguments:
                                      "front/index.org")
                                    ,site-plist-var
                                    (gethash (intern source-org)
-                                            file-plists-hash)))))
+                                            file-plists-hash))))
+         (debug-msg (1 :control)
+             ,(concatenate 'string
+                "Exiting " (symbol-name overall-setup-fn)
+                ", prep for top-page-entry\n")))
 
        (defun ,overall-cleanup-fn (properties)
 
@@ -477,16 +486,48 @@ arguments:
            (defblog/state-dump ,site-plist-var)))
 
        (defun ,cat-indices-prep-fn (properties)
-         (defblog/cat-indices-prep ,site-plist-var))
+         (debug-msg (1 :control)
+             ,(concatenate 'string
+                "Starting " (symbol-name cat-indices-prep-fn)
+                ", prep for cat-indices-entry"))
+         (defblog/cat-indices-prep ,site-plist-var)
+         (debug-msg (1 :control)
+             ,(concatenate 'string
+                "Exiting " (symbol-name cat-indices-prep-fn)
+                ", prep for cat-indices-entry")))
 
        (defun ,gen-statics-prep-fn (properties)
-         (defblog/gen-statics-prep ,site-plist-var))
+         (debug-msg (1 :control)
+             ,(concatenate 'string
+                "Starting " (symbol-name gen-statics-prep-fn)
+                ", prep for gen-statics-entry"))
+         (defblog/gen-statics-prep ,site-plist-var)
+         (debug-msg (1 :control)
+             ,(concatenate 'string
+                "Exiting " (symbol-name gen-statics-prep-fn)
+                ", prep for gen-statics-entry")))
 
        (defun ,posts-prep-fn (properties)
-         (defblog/posts-prep ,site-plist-var))
+         (debug-msg (1 :control)
+             ,(concatenate 'string
+                "Starting " (symbol-name posts-prep-fn)
+                ", prep for posts-entry"))
+         (defblog/posts-prep ,site-plist-var)
+         (debug-msg (1 :control)
+             ,(concatenate 'string
+                "Exiting " (symbol-name posts-prep-fn)
+                ", prep for posts-entry")))
 
        (defun ,pages-prep-fn (properties)
-         (defblog/pages-prep ,site-plist-var))
+         (debug-msg (1 :control)
+             ,(concatenate 'string
+                "Starting " (symbol-name pages-prep-fn)
+                ", prep for pages-entry"))
+         (defblog/pages-prep ,site-plist-var)
+         (debug-msg (1 :control)
+             ,(concatenate 'string
+                "Exiting " (symbol-name pages-prep-fn)
+                ", prep for pages-entry")))
        
        ;; Register this blog with org-project.
        (let ((cleaned-alist (alist-remove-string-key
@@ -718,8 +759,7 @@ directories, to the plist of information about that category."
       (let ((item-fullpath (concatenate 'string source-directory item)))
         (defblog/process-file-for-hash item nil 0 item-fullpath file-plist-hash
                                        category-plist-hash))))
-  (debug-msg (3 :internal) "Finished property hash reset")
-  )
+  (debug-msg (3 :internal) "Finished property hash reset"))
 
 (defun defblog/process-file-for-hash (bare-name cat-tag depth full-path
                                       file-plist-hash category-plist-hash)
@@ -778,6 +818,7 @@ directories, to the plist of information about that category."
          (bare-updated (assoc "UPDATED" keyvals))
          (priority (nth 1 (assoc "SITEMAP_PRIORITY" keyvals)))
          (change-freq (nth 1 (assoc "CHANGE_FREQ" keyvals)))
+         (is-draft (nth 1 (assoc "DRAFT" keyvals)))
          (post-date (cond
                       (bare-date (date-to-time (nth 1 bare-date)))
                       (t nil)))
@@ -795,6 +836,7 @@ directories, to the plist of information about that category."
                   :title (nth 1 (assoc "TITLE" keyvals))
                   :desc (nth 1 (assoc "DESCRIPTION" keyvals))
                   :link (nth 1 (assoc "LINK" keyvals))
+                  :draft is-draft
                   :cat cat-tag
                   :author-name (nth 1 (assoc "AUTHOR_NAME" keyvals))
                   :date post-date :updated post-updated
@@ -937,7 +979,11 @@ FILE-PLIST and SITE-PLIST are the property lists specifying the particular
 page, and the site in general."
   (with-plist-properties ((is-draft :draft))
       file-plist
-    (not is-draft)))
+    (let ((result (not is-draft)))
+      (debug-msg (4 :draft)
+          "Checking publish-p of %s: draft flag %s => %s"
+        (plist-get file-plist :path) is-draft result)
+      result)))
 
 
 ;;; =================================================================
@@ -1039,7 +1085,9 @@ structures of the blog artifacts."
         (dolist (cat-plist (hash-table-values cat-plist-hash))
           ;; TODO Check category publishability by whether it actually
           ;; contains pages.
-          (let ((cat-tag (plist-get cat-plist :tag)))
+          (with-plist-properties ((cat-tag :tag)
+                                  (cat-dir :src-dir))
+              cat-plist
             (defblog/write-xml-sitemap-entry
                 (concatenate 'string site-url cat-tag "/")
                 (plist-get cat-plist :latest-post) nil
@@ -1047,13 +1095,13 @@ structures of the blog artifacts."
                 nil (plist-get cat-plist :sitemap-priority) default-priority)
 
             (dolist (file (plist-get cat-plist :post-files))
-              (when (defblog/publish-p file site-plist)
-                (debug-msg (3 :internal) "File %s" file)
-                (let* ((file-fullpath (concatenate 'string
-                                        (plist-get cat-plist :src-dir) file))
-                       (file-plist (gethash (intern file-fullpath)
-                                            file-plist-hash)))
-                  (debug-msg (3 :internal) "     plist %s" file-plist)
+              (debug-msg (3 :internal) "File %s" file)
+              (let* ((file-fullpath (concatenate 'string
+                                      (plist-get cat-plist :src-dir) file))
+                     (file-plist (gethash (intern file-fullpath)
+                                          file-plist-hash)))
+                (debug-msg (3 :internal) "     plist %s" file-plist)
+                (when (defblog/publish-p file-plist site-plist)
                   (let* ((base-file-src (plist-get file-plist :bare))
                          (page-url
                           (concatenate 'string
@@ -1443,13 +1491,15 @@ the feed."
         (make-directory cat-tmp-dir t)
         (dolist (file (plist-get (gethash (intern cat) cat-plist-hash)
                                  :post-files))
-          (when (defblog/publish-p file site-plist)
-            (let ((cat-src-file (concatenate 'string cat-src-dir file))
-                  (cat-tmp-file (concatenate 'string cat-tmp-dir file)))
-              (debug-msg (3 :internal) "%s %s" cat-src-file cat-tmp-file)
-              (funcall post-copy-function cat-src-file cat-tmp-file
-                       site-plist
-                       (gethash cat-src-file file-plist-hash)))))))))
+          (let* ((file-fullpath (concatenate 'string cat-src-dir file))
+                 (file-plist (gethash (intern file-fullpath) file-plist-hash)))
+            (when (defblog/publish-p file-plist site-plist)
+              (let ((cat-src-file (concatenate 'string cat-src-dir file))
+                    (cat-tmp-file (concatenate 'string cat-tmp-dir file)))
+                (debug-msg (3 :internal) "%s %s" cat-src-file cat-tmp-file)
+                (funcall post-copy-function cat-src-file cat-tmp-file
+                         site-plist
+                         (gethash cat-src-file file-plist-hash))))))))))
 
 ;;; =================================================================
 ;;; Copying pages into the tmp space
