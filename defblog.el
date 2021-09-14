@@ -289,7 +289,6 @@ arguments:
         ;; Names of functions associated with this blog.  Each of
         ;; these names is associated with a DEFUN in the macro
         ;; expansion.
-
         (cat-indices-prep-fn (intern (concatenate 'string
                                        "defblog/" name "/cat-indices-prep")))
         (gen-statics-prep-fn (intern (concatenate 'string
@@ -349,7 +348,7 @@ arguments:
            (t (error "Unrecognized value for FEED-ENTRY-SUNSET: %s"
                      feed-entry-sunset)))))
     
-    `(let ()
+    `(progn
 
        ;; DEFVARs corresponding to the stateful components of this
        ;; blog.
@@ -443,7 +442,8 @@ arguments:
                          :generate-rss ,generate-rss
                          :generate-atom ,generate-atom
                          :generate-htaccess ,generate-htaccess
-                         :feed-entry-sunset-predicate ,feed-entry-sunset-pred)))
+                         :feed-entry-sunset-predicate
+                         ,feed-entry-sunset-pred)))
            (debug-msg (0 t) "Setting up defblog temp structures...done")
            (,state-dump-fn)
 
@@ -454,7 +454,8 @@ arguments:
                                "index.org")))
              (,front-copy-function source-org
                                    (concatenate 'string
-                                     (plist-get ,site-plist-var :temp-directory)
+                                     (plist-get ,site-plist-var
+                                                :temp-directory)
                                      "front/index.org")
                                    ,site-plist-var
                                    (gethash (intern source-org)
@@ -1315,8 +1316,9 @@ the feed."
                  (post-fullpaths
                   (file-expand-wildcards (concatenate 'string
                                            cat-src-dir "*.org")))
-                 (file-plists (mapcar #'(lambda (p) (defblog/fetch-file-plist p
-                                                        file-plist-hash))
+                 (file-plists (mapcar #'(lambda (p)
+                                          (defblog/fetch-file-plist p
+                                              file-plist-hash))
                                       post-fullpaths))
                  (cat-properties (gethash (intern category-tag)
                                           cat-plist-hash)))
@@ -2025,4 +2027,3 @@ and %% is replaced by a single %."
 
 (provide 'defblog)
 ;;; defblog ends here
-
