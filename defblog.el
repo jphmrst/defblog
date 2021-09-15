@@ -51,8 +51,8 @@
   `(progn ,@forms) ;; nil
   )
 
-(defconst +defblog/debug-level+ 4)
-(defconst +defblog/debug-topics+ '(:draft)) ;; '(:control :draft))
+(defconst +defblog/debug-level+ 3)
+(defconst +defblog/debug-topics+ '(:control :draft)) ;; '(:control :draft))
 (cl-defmacro debug-msg ((level topic-or-topics) &rest args)
   (declare (indent 2))
   (when (and (<= level +defblog/debug-level+)
@@ -1021,7 +1021,7 @@ category, and the site in general."
     ;; If the category is not associated with any files, then we do
     ;; not publish.
     (let ((result (not (null post-files))))
-      (debug-msg (4 :draft)
+      (debug-msg (3 :draft)
           "Checking publish-category-p of %s: post-files %s => %s"
         (plist-get category-plist :title) post-files result)
       result)))
@@ -1095,7 +1095,7 @@ the temporary files workspace.
 structures of the blog artifacts."
   (declare (indent nil))
 
-  (debug-msg (3 :internal) "Generating XML sitemap")
+  (debug-msg (2 :control) "Generating XML sitemap...")
   (with-plist-properties ((file-plist-hash :file-plists-hash)
                           (cat-plist-hash :cat-plists-hash)
                           (gen-directory :temp-directory)
@@ -1128,6 +1128,8 @@ structures of the blog artifacts."
             (with-plist-properties ((cat-tag :tag)
                                     (cat-dir :src-dir))
                 cat-plist
+              (debug-msg (3 :control) "Category %s flagged for publication"
+                cat-tag)
               (defblog/write-xml-sitemap-entry
                   (concatenate 'string site-url cat-tag "/")
                   (plist-get cat-plist :latest-post) nil
@@ -1142,6 +1144,9 @@ structures of the blog artifacts."
                                             file-plist-hash)))
                   (debug-msg (3 :internal) "     plist %s" file-plist)
                   (when (defblog/publish-p file-plist site-plist)
+                    (debug-msg (3 :control)
+                        "File %s (%s) flagged for publication"
+                      (plist-get file-plist :bare) cat-tag)
                     (let* ((base-file-src (plist-get file-plist :bare))
                            (page-url
                             (concatenate 'string
@@ -1161,9 +1166,10 @@ structures of the blog artifacts."
                               file-change-freq cat-change-freq
                               default-change-freq file-priority cat-priority
                               default-priority))))))))))
-        (insert "</urlset>\n")))))
+        (insert "</urlset>\n"))))
+  (debug-msg (2 :control) "Generating XML sitemap...done"))
 
-;; TODO Just pass in the site-plist and file-plist here.
+;; TODO Just pass in the site-plist and file-plist here?
 (defun defblog/write-xml-sitemap-entry (page-url post-time update-time
                                         page-change-freq
                                         group-default-change-freq
@@ -1172,6 +1178,7 @@ structures of the blog artifacts."
                                         group-default-priority
                                         blog-default-priority)
   (declare (indent nil))
+  (debug-msg (3 :control) "Writing XML sitemap entry for %s" page-url)
   (let* ((mod-time (cond
                      ((null post-time) update-time)
                      ((null update-time) post-time)
