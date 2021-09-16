@@ -34,7 +34,7 @@
 ;; of a guide to the implementation (for me as much as for you).
 
 ;; ADDING AND USING A FILE PROPERTY.  The file properties are
-;; processed in DEFBLOG/FORMAT-ORGPROPS-PLIST.  There is a translation
+;; processed in defblog/format-orgprops-plist .  There is a translation
 ;; between the (usually all-caps) names used for file properties, and
 ;; the (usually Lisp keyword) keys for the property list, it is
 ;; necessary to add the new property explicitly there.
@@ -51,7 +51,7 @@
   `(progn ,@forms) ;; nil
   )
 
-(defconst +defblog/debug-level+ 3)
+(defconst +defblog/debug-level+ 4)
 (defconst +defblog/debug-topics+ '(:control :draft)) ;; '(:control :draft))
 (cl-defmacro debug-msg ((level topic-or-topics) &rest args)
   (declare (indent 2))
@@ -834,6 +834,7 @@ directories, to the plist of information about that category."
          (priority (nth 1 (assoc "SITEMAP_PRIORITY" keyvals)))
          (change-freq (nth 1 (assoc "CHANGE_FREQ" keyvals)))
          (is-draft (nth 1 (assoc "DRAFT" keyvals)))
+         (pin (nth 1 (assoc "PIN" keyvals)))
          (post-date (cond
                       (bare-date (date-to-time (nth 1 bare-date)))
                       (t nil)))
@@ -855,6 +856,7 @@ directories, to the plist of information about that category."
                   :cat cat-tag
                   :author-name (nth 1 (assoc "AUTHOR_NAME" keyvals))
                   :date post-date
+                  :pin pin
                   :updated post-updated
                   :old-urls (when (its (nth 1 (assoc "OLD_URL" keyvals)))
                               (split-string (it) " *, *"))
@@ -998,6 +1000,7 @@ page, and the site in general."
                           (postdate-policy :postdate-policy))
       site-plist
     (with-plist-properties ((is-draft :draft)
+                            (depth :depth)
                             (publish-date :date))
         file-plist
       ;; If it's a draft, we do not publish
@@ -1005,7 +1008,9 @@ page, and the site in general."
                          ;; Make sure that either the postdated policy
                          ;; is to show postdated files, *or* that this
                          ;; file was published before the start-time.
-                         (or (eq postdate-policy :show)
+                         ;; Pages are allowed to have no date
+                         (or (and (zerop depth) (null publish-date))
+                             (eq postdate-policy :show)
                              (time-less-p publish-date start-time)))))
         (debug-msg (4 :draft)
             "Checking publish-p of %s: draft flag %s => %s"
@@ -1566,7 +1571,7 @@ the feed."
 
   (with-plist-properties ((file-plist-hash :file-plists-hash)
                           (cat-plist-hash :cat-plists-hash)
-                          (source-directory :source-directory)
+                          (source-dir :source-directory)
                           (cat-list :category-tags)
                           (gen-directory :temp-directory)
                           (page-copy-function :page-copy-fn))
@@ -1574,19 +1579,22 @@ the feed."
     (debug-msg (1 t) "In defblog/pages-prep")
     (debug-msg (6 t) "- Categories: %s" cat-plist-hash)
     (debug-msg (4 t) "- gen-directory %s" gen-directory)
-    (debug-msg (4 t) "- source-directory %s" source-directory)
+    (debug-msg (4 t) "- source-dir %s" source-dir)
     (let ((tmp-dir (concatenate 'string gen-directory "pages/")))
       (debug-msg (4 t) "- gen-directory %s" gen-directory)
       ;; Look at all of the file plists
       (dolist (plist (hash-table-values file-plist-hash))
-        (when (defblog/publish-p plist site-plist)
+        (with-plist-properties ((depth :depth)
+                                (bare :bare))
+            plist
           ;; Pages have depth zero
-          (when (zerop (plist-get plist :depth))
-            (let ((bare (plist-get plist :bare)))
+          (when (zerop depth)
+            (debug-msg (3 t) "- Considering page %s" bare)
+            (when (defblog/publish-p plist site-plist)
               ;; Skip the index file; we treat it separately.
               (unless (string-match "index.org$" bare)
-                (let ((src-file
-                       (concatenate 'string source-directory bare))
+                (debug-msg (3 t) "  Copying in")
+                (let ((src-file (concatenate 'string source-dir bare))
                       (tmp-file (concatenate 'string tmp-dir bare)))
                   (debug-msg (3 :internal) "%s %s" cat-src-file cat-tmp-file)
                   (funcall page-copy-function src-file tmp-file
@@ -1868,6 +1876,7 @@ pragmas.  Currently there are two substitutions:
   category index pages.  Right now the substitution produces a
   non-numbered list; future work will allow controlling the list with
   file properties, as for the recent posts pragma."
+
   (declare (indent nil))
   (debug-msg (3 :internal)
       "Called page-copy-with-substitutions for %s"
@@ -1887,7 +1896,7 @@ pragmas.  Currently there are two substitutions:
       (dolist (line source-lines)
         (cond
 
-          ;; Insert the last few new posts.
+          ;; Insert links to the categories
           ((string-match "^# CATEGORY-LINKS\\(.*\\)$" line)
            (insert "# Inserting category links\n")
            (let ((category-plist-hash
@@ -1898,10 +1907,11 @@ pragmas.  Currently there are two substitutions:
                        #'(lambda (x y)
                            (string-lessp (plist-get x :title)
                                          (plist-get y :title)))))
-               (with-plist-properties ((tag :tag)
-                                       (title :title))
-                   cat-plist
-                 (insert "- [[./" tag "/][" title "]]\n")))))
+               (when (defblog/publish-category-p cat-plist site-properties)
+                 (with-plist-properties ((tag :tag)
+                                         (title :title))
+                     cat-plist
+                   (insert "- [[./" tag "/][" title "]]\n"))))))
 
           ;; Insert the last few new posts.
           ((string-match "^# RECENT-POST-LINKS\\(.*\\)$" line)

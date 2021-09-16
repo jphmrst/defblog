@@ -399,9 +399,6 @@ the category tag, to the property list for that category.
 
  - A `PIN` file property for posts that keeps them on the front page
    and feeds.
-   
- - Check that a category has posts before generating it, adding it to
-   indices.
 
 ### Things to have before calling it Version 1.0
 
