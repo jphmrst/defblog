@@ -301,7 +301,31 @@ pragmas.  Currently there are two substitutions:
    - `PAGE_SUBST_POSTS_NUMBERED` If this property is non-null, then
      the references are inserted as a numbered list; otherwise they
      are inserted as a non-numbered list.
-      
+
+   - `PAGE_SUBST_PIN_POLICY` This value describes how pinned posts
+     should be handled in the list of posts here.  There are five
+     possible values; an error will be raised if the given policy does
+     not intern to one of these fine keyword symbols:
+
+	  - `:ignore-pin` The `PIN` property of posts will be ignored, and
+        only the post date and `PAGE_SUBST_POSTS_MAX` maximum limit of
+        posts will be considered.
+
+	  - `:pinned-only`  Only pinned posts (and moreover all of them)
+        will be listed.
+
+	  - `:raise-cap` The list will include both all pinned posts and
+        up to `PAGE_SUBST_POSTS_MAX` unpinned posts.
+
+	  - `:capped` The list will include all pinned posts, and if the
+        limit of `PAGE_SUBST_POSTS_MAX` allows, some unpinned posts as
+        well.
+
+	  - `:strict-cap` The list can include pinned posts and recent
+        unpinned posts, and will be sorted by descending modification
+        date, but with no more than the limit of
+        `PAGE_SUBST_POSTS_MAX` total posts.
+
 - If a line starts
 
   ```lisp
@@ -393,12 +417,7 @@ the category tag, to the property list for that category.
  - `:sorted-file-plists` is a list of file property lists sorted in
    descending order of last-modified date.
 
-## Current TODOs
-
-### Things for 0.2
-
- - A `PIN` file property for posts that keeps them on the front page
-   and feeds.
+## Roadmap for future versions
 
 ### Things to have before calling it Version 1.0
 

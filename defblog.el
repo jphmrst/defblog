@@ -411,10 +411,8 @@ arguments:
                          :cat-plists-hash category-plists-hash
                          :category-tags cat-list
                          :sorted-file-plists
-                         (sort (hash-table-values file-plists-hash)
-                               #'(lambda (x y)
-                                   (time-less-p (plist-get y :mod)
-                                                (plist-get x :mod))))
+                         (sort-by-mod-desc (hash-table-values
+                                            file-plists-hash))
                          :title ,blog-title :desc ,blog-desc :url ,blog-url
                          :post-copy-fn #',post-copy-function
                          :page-copy-fn #',page-copy-function
@@ -1758,6 +1756,12 @@ temporary files workspace.  The SITE-PLIST is the full site specification."
            ((string= key head-key) recur-cdr)
            (t (cons head-pair recur-cdr)))))))
 
+(defun sort-by-mod-desc (plists)
+  "Reverse-sort a list PLISTS of property lists by modification date :mod."
+  (sort plists #'(lambda (x y)
+                   (time-less-p (plist-get y :mod)
+                                (plist-get x :mod)))))
+
 (defun filter (f xs)
   "The classical filter function.
 Only the elements of XS which satisfy F are retained in the result."
@@ -1915,20 +1919,51 @@ pragmas.  Currently there are two substitutions:
 
           ;; Insert the last few new posts.
           ((string-match "^# RECENT-POST-LINKS\\(.*\\)$" line)
-           (destructuring-bind (max indent newlines final-newline
-                                    earliest format-string numbered)
+           (multiple-value-bind (max indent newlines final-newline
+                                     earliest format-string numbered
+                                     pin-policy)
                (defblog/page-subst-recent-posts-args src-path)
 
              (debug-msg (3 :internal) "Earliest: %s %s" earliest
                         (format-time-string +rfc-3339-time-format+ earliest))
-             (let* ((all-posts (plist-get site-properties
-                                          :sorted-file-plists))
-                    (selected
+             (let* ((all-posts (plist-get site-properties :sorted-file-plists))
+
+                    (select-by-pin
+                     (filter #'(lambda (pl) (plist-get pl :pin)) all-posts))
+
+                    (select-by-date
                      (filter #'(lambda (pl)
                                  (time-less-p earliest (plist-get pl :mod)))
                              (cond
                                ((numberp max) (take max all-posts))
                                (t all-posts))))
+
+                    (select-unpinned-by-date
+                     (let ((all-unpinned (filter #'(lambda (pl)
+                                                     (not (plist-get pl :pin)))
+                                                 all-posts)))
+                       (filter #'(lambda (pl)
+                                   (time-less-p earliest (plist-get pl :mod)))
+                               (cond
+                                 ((numberp max) (take max all-unpinned))
+                                 (t all-unpinned)))))
+
+                    (selected
+                     (case pin-policy
+                       ((:ignore-pin)  select-by-date)
+                       ((:pinned-only) select-by-pin)
+                       ((:raise-cap)
+                        (sort-by-mod-desc (append select-unpinned-by-date
+                                                  select-by-pin)))
+                       ((:capped)
+                        (sort-by-mod-desc
+                         (append (take (- max (length select-by-pin))
+                                       select-unpinned-by-date)
+                                 select-by-pin)))
+                       ((:strict-cap)
+                        (take max
+                              (sort-by-mod-desc (append select-unpinned-by-date
+                                                        select-by-pin))))))
 
                     (prefix (cond
                               ((stringp indent) indent)
@@ -2053,6 +2088,18 @@ and %% is replaced by a single %."
                                          keyvals)))
                       (not (string= (it) "nil")))
                      (t t)))
+
+         (pin-policy (cond
+                       ((its (nth 1 (assoc "PAGE_SUBST_PIN_POLICY" keyvals)))
+                        (let ((policy (intern (it))))
+                          (case policy
+                            ((:ignore-pin :pinned-only :raise-cap :capped
+                                          :strict-cap)
+                             policy)
+                            (otherwise (error "Unrecognized pin-policy %s"
+                                              policy)))))
+                       (t :raise-cap)))
+
          (final-newline (cond
                           ((its (nth 1 (assoc
                                         "PAGE_SUBST_POSTS_FINAL_NEWLINE"
@@ -2077,10 +2124,12 @@ and %% is replaced by a single %."
           (when (its (nth 1 (assoc "PAGE_SUBST_POSTS_MAX_AGE_DAYS"
                                    keyvals)))
             (string-to-number (it))))
+
          (max-age-months
           (when (its (nth 1 (assoc "PAGE_SUBST_POSTS_MAX_AGE_MONTHS"
                                    keyvals)))
             (string-to-number (it))))
+
          (max-age-years
           (when (its (nth 1 (assoc "PAGE_SUBST_POSTS_MAX_AGE_YEARS"
                                    keyvals)))
@@ -2131,11 +2180,10 @@ and %% is replaced by a single %."
             ;; web.
             (t
              (debug-msg (3 :internal) "Using +web-announcement-date+")
-             +web-announcement-date+)))
+             +web-announcement-date+))))
 
-         (result (list max indent newlines final-newline earliest
-                       format-string numbered)))
-    result))
+    (values max indent newlines final-newline earliest format-string
+            numbered pin-policy)))
 
 (provide 'defblog)
 ;;; defblog ends here
